@@ -1,5 +1,5 @@
 # projetoRedes
-## Grupo:
+## Equipe 6:
 
 João Henrique Moraes Guedes -	jhmg
 

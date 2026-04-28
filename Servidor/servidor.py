@@ -15,7 +15,7 @@ print('O servidor está pronto para receber conexões!')
 ## Laço para receber os arquivos enviados pelo cliente e retornar os arquivos renomeados
 while True: # (laço infinito para simular um servidor que fica sempre ativo para receber conexões dos clientes)
 
-    ## RECEBIMENTO DE ARQUIVOS ##
+    ## RECEBIMENTO DOS ARQUIVOS ##
 
     msg, client = serverSocket.recvfrom(BUFFER_SIZE) # recebe o nome do arquivo enviado pelo cliente
 
@@ -42,7 +42,7 @@ while True: # (laço infinito para simular um servidor que fica sempre ativo par
         print(f"Número de pacotes recebidos: {numPackage}")
         print(f"Arquivo {fileName} recebido com sucesso!")
 
-    ## RETORNO DE ARQUIVOS ##
+    ## RETORNO DOS ARQUIVOS ##
 
     numPackage = 0 # reseta o contador de pacotes enviados
 

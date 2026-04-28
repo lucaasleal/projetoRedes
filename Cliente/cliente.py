@@ -18,7 +18,7 @@ clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket 
 ## Laço para enviar e receber os arquivos
 for fileName in LIST_FILES:
 
-    ## ENVIO DE ARQUIVOS ##
+    ## ENVIO DOS ARQUIVOS ##
 
     numPackage = 0 # reseta o contador de pacotes enviados
 
@@ -42,7 +42,7 @@ for fileName in LIST_FILES:
 
         print(f"Número de pacotes enviados: {numPackage}")
 
-    ## RECEBIMENTO DE ARQUIVOS ##
+    ## RECEBIMENTO DOS ARQUIVOS ##
 
     msg, _ = clientSocket.recvfrom(BUFFER_SIZE) # recebe o nome do arquivo renomeado pelo servidor
 

@@ -17,9 +17,9 @@ clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket 
 
 ## Laço para enviar e receber os arquivos
 for fileName in LIST_FILES:
-    
+
     ## ENVIO DE ARQUIVOS ##
-    
+
     numPackage = 0 # reseta o contador de pacotes enviados
 
     ## Rotina que abre o arquivo para leitura em modo binário e envia-o em pacotes para o servidor
@@ -28,7 +28,7 @@ for fileName in LIST_FILES:
         numPackage += 1
 
         package = file.read(BUFFER_SIZE) # lê o conteúdo do arquivo em pacotes do tamanho do buffer
-        
+
         ## Laço que envia os pacotes do arquivo para o servidor enquanto houver conteúdo para ler
         while package:
             clientSocket.sendto(package, (SERVER_NAME, SERVER_PORT)) # envia o pacote para o servidor
@@ -67,7 +67,7 @@ for fileName in LIST_FILES:
                 numPackage += 1
 
                 break
-        
+
         print(f"Arquivo {fileRenamed} retornado com sucesso!")
         print(f"Número de pacotes recebidos: {numPackage}")
         print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")

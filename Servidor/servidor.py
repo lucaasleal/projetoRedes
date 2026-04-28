@@ -14,17 +14,14 @@ print('O servidor está pronto para receber conexões!')
 
 ## Laço para receber os arquivos enviados pelo cliente e retornar os arquivos renomeados
 while True: # (laço infinito para simular um servidor que fica sempre ativo para receber conexões dos clientes)
-    
+
     ## RECEBIMENTO DE ARQUIVOS ##
-    
+
     msg, client = serverSocket.recvfrom(BUFFER_SIZE) # recebe o nome do arquivo enviado pelo cliente
 
     fileName = msg.decode() # decodifica o nome do arquivo recebido do cliente
 
     numPackage = 0 # reseta o contador de pacotes recebidos
-
-    # recebe o conteúdo do arquivo e cria um novo arquivo com o mesmo nome
-    # escreve o conteúdo dos pacotes recebidos no novo arquivo
     
     ## Rotina que recebe os pacotes do arquivo enviado pelo cliente e escreve o conteúdo em um novo arquivo
     with open('pasta/' + fileName, 'wb') as file:
@@ -46,18 +43,18 @@ while True: # (laço infinito para simular um servidor que fica sempre ativo par
         print(f"Arquivo {fileName} recebido com sucesso!")
 
     ## RETORNO DE ARQUIVOS ##
-    
+
     numPackage = 0 # reseta o contador de pacotes enviados
 
     ## Rotina que abre o arquivo para leitura em modo binário, renomea-o e envia-o em pacotes para o cliente
     with open('pasta/' + fileName, 'rb') as file:
         fileRenamed = 'leilao_' + fileName ## tratamento para enviar o arquivo renomeado para o cliente
-        
+
         serverSocket.sendto(fileRenamed.encode(), client) # envia o nome do arquivo renomeado codificado para o cliente
         numPackage += 1
 
         package = file.read(BUFFER_SIZE) # lê o conteúdo do arquivo em pacotes do tamanho do buffer
-        
+
         ## Laço que envia os pacotes do arquivo para o cliente enquanto houver conteúdo para ler
         while package:
             serverSocket.sendto(package, client) # envia o pacote para o cliente
@@ -67,8 +64,8 @@ while True: # (laço infinito para simular um servidor que fica sempre ativo par
 
         serverSocket.sendto(b'', client) # envia o caractere null para sinalizar o cliente do fim do arquivo
         numPackage += 1
-        
+
         print(f"Arquivo {fileRenamed} retornado com sucesso!")
         print(f"Número de pacotes enviados: {numPackage}")
         print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-        
+

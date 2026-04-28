@@ -12,11 +12,17 @@ Rodrigo Florenço dos Santos	- rfs6
 
 
 ## Como executar
-Abra dois terminais, primeiro execute o servidor e depois o cliente:
+Abra dois terminais, primeiro execute o servidor:
 ```bash
 python3 servidor.py
+```
+Com o servidor aguardando e pronto para receber pacotes:
+```bash
 python3 cliente.py
 ```
+
+OBS: Como o servidor não possui o diretório 'pasta', na primeira execução ele vai criar 'pasta', onde serão os arquivos recebidos. Em outras execuções, o diretório já existirá.
+
 
 O cliente possui quatro arquivos e esses quatro serão enviados automaticamente pelo cliente, posteriormente recebidos e retornados pelo servidor, com os seus nomes alterados.
 

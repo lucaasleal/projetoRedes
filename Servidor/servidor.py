@@ -1,60 +1,71 @@
-from socket import *
+# Módulo servidor.py: Responsável por receber os arquivos enviados pelo cliente, salvando-os na pasta,
+#                     renomear esses arquivos e retorná-los para o cliente
 
-serverPort = 12000
-serverSocket = socket(AF_INET, SOCK_DGRAM)
-serverSocket.bind(('', serverPort))
-bufferSize = 1024
 
-print('The server is ready to receive')
+import socket # importa a biblioteca socket para criar o socket UDP e realizar a comunicação com o cliente
 
-while True:
+SERVER_PORT = 12000 # porta do servidor
+BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
 
-    # recebe o nome do arquivo
-    msg, cliente = serverSocket.recvfrom(bufferSize)
+serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do servidor
+serverSocket.bind(('', SERVER_PORT)) # vincula o socket à porta definida
+
+print('O servidor está pronto para receber conexões!')
+
+## Laço para receber os arquivos enviados pelo cliente e retornar os arquivos renomeados
+while True: # (laço infinito para simular um servidor que fica sempre ativo para receber conexões dos clientes)
+
+    ## RECEBIMENTO DOS ARQUIVOS ##
+
+    msg, client = serverSocket.recvfrom(BUFFER_SIZE) # recebe o nome do arquivo enviado pelo cliente
+
+    fileName = msg.decode() # decodifica o nome do arquivo recebido do cliente
+
+    numPackage = 0 # reseta o contador de pacotes recebidos
     
-    # cria o novo nome do arquivo (ex: arquivo_leilao.txt)
-    fileName = msg.decode()
-    num_pacotes = 0
-    # recebe o conteúdo do arquivo e cria um novo arquivo com o mesmo nome
-    # escreve o conteúdo dos pacotes recebidos no novo arquivo
-    with open('pasta/' + fileName, 'wb') as f:
-        msg, cliente = serverSocket.recvfrom(bufferSize)
-        num_pacotes+=1
-
-        while True:
-            num_pacotes+=1
-            f.write(msg)
-            msg, cliente = serverSocket.recvfrom(bufferSize)
-            if msg == b'':
-                f.write(b'')
-                num_pacotes+=1
-                break
-        print("Número de pacotes recebidos: ", num_pacotes)
-
-        print(f"Arquivo {fileName} recebido com sucesso!")
-    
-
-    #REENVIO
-    num_pacotes = 0
-    
-    with open('pasta/' + fileName, 'rb') as f:
-        modified_fileName = 'leilao_' + fileName
-        serverSocket.sendto(modified_fileName.encode(), cliente)
-        num_pacotes+=1
-
-        pct = f.read(bufferSize)
-        while pct:
-            num_pacotes+=1
-            serverSocket.sendto(pct, cliente)
-            pct = f.read(bufferSize)
+    ## Rotina que recebe os pacotes do arquivo enviado pelo cliente e escreve o conteúdo em um novo arquivo
+    with open('pasta/' + fileName, 'wb') as file:
         
-        # envia o caracter null para sinalizar o servidor o fim do arquivo
-        serverSocket.sendto(b'', cliente)
-        num_pacotes+=1
+        ## Laço que recebe os pacotes do arquivo enviado pelo cliente enquanto houver conteúdo para ler, escrevendo o conteúdo dos pacotes no novo arquivo criado
+        while True:
+            msg, client = serverSocket.recvfrom(BUFFER_SIZE) # recebe o pacote do arquivo enviado pelo cliente
+            
+            if msg == b'': # condição que sinaliza o fim do arquivo enviado pelo cliente
+                file.write(b'') # envia o caractere null para sinalizar o fim do arquivo no novo arquivo criado
+                numPackage += 1
+                
+                break
 
-        print("Número de pacotes enviados: ", num_pacotes)
+            file.write(msg) # escreve o conteúdo do pacote recebido no novo arquivo criado
+            numPackage += 1
 
-        print(f"Arquivo {fileName} retornado com sucesso!")
+        print(f"Número de pacotes recebidos: {numPackage}")
+        print(f"Arquivo {fileName} recebido com sucesso!")
+
+    ## RETORNO DOS ARQUIVOS ##
+
+    numPackage = 0 # reseta o contador de pacotes enviados
+
+    ## Rotina que abre o arquivo para leitura em modo binário, renomea-o e envia-o em pacotes para o cliente
+    with open('pasta/' + fileName, 'rb') as file:
+        fileRenamed = 'leilao_' + fileName ## tratamento para enviar o arquivo renomeado para o cliente
+
+        serverSocket.sendto(fileRenamed.encode(), client) # envia o nome do arquivo renomeado codificado para o cliente
+        numPackage += 1
+
+        package = file.read(BUFFER_SIZE) # lê o conteúdo do arquivo em pacotes do tamanho do buffer
+
+        ## Laço que envia os pacotes do arquivo para o cliente enquanto houver conteúdo para ler
+        while package:
+            serverSocket.sendto(package, client) # envia o pacote para o cliente
+            numPackage += 1
+
+            package = file.read(BUFFER_SIZE) # lê o próximo pacote do arquivo até o final do arquivo
+
+        serverSocket.sendto(b'', client) # envia o caractere null para sinalizar o cliente do fim do arquivo
+        numPackage += 1
+
+        print(f"Arquivo {fileRenamed} retornado com sucesso!")
+        print(f"Número de pacotes enviados: {numPackage}")
         print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-    
-    
+

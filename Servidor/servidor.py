@@ -3,12 +3,22 @@
 
 
 import socket # importa a biblioteca socket para criar o socket UDP e realizar a comunicação com o cliente
+import os #importa a biblioteca do sistema para criação do diretório para salvamento de arquivos no servidor
 
 SERVER_PORT = 12000 # porta do servidor
 BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
 
 serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do servidor
 serverSocket.bind(('', SERVER_PORT)) # vincula o socket à porta definida
+
+nome_pasta = "pasta"
+
+# Verifica se não existe antes de criar
+if not os.path.exists(nome_pasta):
+    os.makedirs(nome_pasta)
+    print(f"'{nome_pasta}' criada.")
+else:
+    print(f"'{nome_pasta}' já existe.")
 
 print('O servidor está pronto para receber conexões!')
 

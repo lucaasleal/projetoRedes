@@ -43,8 +43,7 @@ while True: # (laço infinito para simular um servidor que fica sempre ativo par
             numPackage += 1
 
         print(f"Número de pacotes recebidos: {numPackage}")
-
-    print(f"Arquivo {fileName} recebido com sucesso!")
+        print(f"Arquivo {fileName} recebido com sucesso!")
 
     ## RETORNO DE ARQUIVOS ##
     
@@ -68,10 +67,8 @@ while True: # (laço infinito para simular um servidor que fica sempre ativo par
 
         serverSocket.sendto(b'', client) # envia o caractere null para sinalizar o cliente do fim do arquivo
         numPackage += 1
-
+        
+        print(f"Arquivo {fileRenamed} retornado com sucesso!")
         print(f"Número de pacotes enviados: {numPackage}")
-
-        print(
-            f"""Arquivo {fileRenamed} retornado com sucesso!")
-            -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-"""
-        )
+        print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+        

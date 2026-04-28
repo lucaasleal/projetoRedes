@@ -67,12 +67,9 @@ for fileName in LIST_FILES:
                 numPackage += 1
 
                 break
-
+        
+        print(f"Arquivo {fileRenamed} retornado com sucesso!")
         print(f"Número de pacotes recebidos: {numPackage}")
-
-    print(
-        f"""Arquivo {fileRenamed} retornado com sucesso!
-        -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-"""
-    )
+        print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
 
 clientSocket.close() # fecha o socket após o envio e recebimento de todos os arquivos

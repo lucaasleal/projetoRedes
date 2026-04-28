@@ -11,14 +11,14 @@ BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
 serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do servidor
 serverSocket.bind(('', SERVER_PORT)) # vincula o socket à porta definida
 
-nome_pasta = "pasta"
+dir_name = "pasta"
 
 # Verifica se não existe antes de criar
-if not os.path.exists(nome_pasta):
-    os.makedirs(nome_pasta)
-    print(f"'{nome_pasta}' criada.")
+if not os.path.exists(dir_name):
+    os.makedirs(dir_name)
+    print(f"'{dir_name}' criada.")
 else:
-    print(f"'{nome_pasta}' já existe.")
+    print(f"'{dir_name}' já existe.")
 
 print('O servidor está pronto para receber conexões!')
 

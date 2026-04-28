@@ -52,21 +52,20 @@ for fileName in LIST_FILES:
 
     ## Rotina que recebe os pacotes do arquivo renomeado enviado pelo servidor e escreve o conteúdo em um novo arquivo (com nome novo)
     with open('pasta/' + fileRenamed, 'wb') as file:
-        msg, _ = clientSocket.recvfrom(BUFFER_SIZE) # recebe o primeiro pacote do arquivo renomeado enviado pelo servidor
-        numPackage += 1
-
+        
         ## Laço que recebe os pacotes do arquivo renomeado enviado pelo servidor enquanto houver conteúdo para ler, escrevendo o conteúdo dos pacotes recebidos no novo arquivo criado
         while True:
-            file.write(msg) # escreve o conteúdo do pacote recebido no novo arquivo criado
-
-            msg, _ = clientSocket.recvfrom(BUFFER_SIZE) # recebe o próximo pacote do arquivo renomeado enviado pelo servidor
+            msg, _ = clientSocket.recvfrom(BUFFER_SIZE) # recebe o pacote do arquivo renomeado enviado pelo servidor
             numPackage += 1
 
-            if msg == b'':
+            if msg == b'': # condição que sinaliza o fim do arquivo renomeado enviado pelo servidor
                 file.write(b'') # envia o caractere null para sinalizar o fim do arquivo no novo arquivo criado
                 numPackage += 1
 
                 break
+
+            file.write(msg) # escreve o conteúdo do pacote recebido no novo arquivo criado
+
 
         print(f"Arquivo {fileRenamed} retornado com sucesso!")
         print(f"Número de pacotes recebidos: {numPackage}")

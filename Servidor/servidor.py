@@ -28,9 +28,9 @@ while True: # (laço infinito para simular um servidor que fica sempre ativo par
         
         ## Laço que recebe os pacotes do arquivo enviado pelo cliente enquanto houver conteúdo para ler, escrevendo o conteúdo dos pacotes no novo arquivo criado
         while True:
-            msg, client = serverSocket.recvfrom(BUFFER_SIZE) # recebe o primeiro pacote do arquivo enviado pelo cliente
+            msg, client = serverSocket.recvfrom(BUFFER_SIZE) # recebe o pacote do arquivo enviado pelo cliente
             
-            if msg == b'':
+            if msg == b'': # condição que sinaliza o fim do arquivo enviado pelo cliente
                 file.write(b'') # envia o caractere null para sinalizar o fim do arquivo no novo arquivo criado
                 numPackage += 1
                 

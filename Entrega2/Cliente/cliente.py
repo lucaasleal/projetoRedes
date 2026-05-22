@@ -1,0 +1,105 @@
+# Módulo cliente.py: Responsável por enviar os arquivos para o servidor e
+#                    receber os arquivos renomeados do servidor, salvando-os na pasta
+
+import socket # importa a biblioteca socket para criar o socket UDP e realizar a comunicação com o servidor
+
+SERVER_NAME = 'localhost' # nome do servidor
+SERVER_PORT = 12000 # porta do servidor
+BUFFER_SIZE = 1028 # tamanho do buffer para leitura dos arquivos (1KB)
+DATA_SIZE = 1020
+LIST_FILES = [
+    'atumalaca.jpg',
+    'boa_tarde_neymar.mp4',
+    'poema.txt',
+    'hold_the_line.mp3'
+] # lista de arquivos a serem enviados e tratados pelo servidor
+
+
+class Client:
+    def __init__(self, server_name, server_port, buffer_size, list_files):
+        self.server_name = server_name
+        self.server_port = server_port
+        self.buffer_size = buffer_size
+        self.list_files = list_files
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do cliente
+        self.sequence_number = 0
+    
+
+    
+    def send_file(self, file_name):
+        numPackage = 0 # reseta o contador de pacotes enviados
+        
+        segment_name = self.create_segment(self.sequence_number, file_name.encode())
+        print(segment_name)
+        self.socket.sendto(segment_name, (self.server_name, self.server_port)) # envia o nome do arquivo codificado para o servidor
+
+        ## Rotina que abre o arquivo para leitura em modo binário e envia-o em pacotes para o servidor
+        with open('pasta/' + file_name, 'rb') as file:
+            ## Laço que envia os pacotes do arquivo para o servidor enquanto houver conteúdo para ler
+            while True:
+                data = file.read(self.buffer_size) # lê o conteúdo do arquivo em pacotes do tamanho do buffer
+                segment = self.create_segment(self.sequence_number, data)
+
+                if data:
+                    self.socket.sendto(segment, (self.server_name, self.server_port)) # envia o pacote para o servidor
+                    numPackage += 1
+                else:
+                    break
+            
+        self.socket.sendto(b'', (self.server_name, self.server_port)) # envia o caractere null para sinalizar o servidor do fim do arquivo
+        numPackage += 1
+
+        print(f"Número de pacotes enviados: {numPackage}")
+    
+    def receive_file(self):
+        msg, _ = self.socket.recvfrom(BUFFER_SIZE) # recebe o nome do arquivo renomeado pelo servidor
+
+        fileRenamed = msg.decode() # decodifica o nome do arquivo renomeado recebido do servidor
+
+        numPackage = 0 # reseta o contador de pacotes recebidos
+
+        ## Rotina que recebe os pacotes do arquivo renomeado enviado pelo servidor e escreve o conteúdo em um novo arquivo (com nome novo)
+        with open('pasta/' + fileRenamed, 'wb') as file:
+            
+            ## Laço que recebe os pacotes do arquivo renomeado enviado pelo servidor enquanto houver conteúdo para ler, escrevendo o conteúdo dos pacotes recebidos no novo arquivo criado
+            while True:
+                msg, _ = self.socket.recvfrom(BUFFER_SIZE) # recebe o pacote do arquivo renomeado enviado pelo servidor
+                numPackage += 1
+
+                if msg == b'': # condição que sinaliza o fim do arquivo renomeado enviado pelo servidor
+                    file.write(b'') # envia o caractere null para sinalizar o fim do arquivo no novo arquivo criado
+                    numPackage += 1
+
+                    break
+
+                file.write(msg) # escreve o conteúdo do pacote recebido no novo arquivo criado
+
+            print(f"Arquivo {fileRenamed} retornado com sucesso!")
+            print(f"Número de pacotes recebidos: {numPackage}")
+            print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+        
+    def close(self):
+        self.socket.close() # fecha o socket após o envio e recebimento de todos os arquivos
+    
+    def create_segment(self, sequence_number: int, data: str):
+        return sequence_number.to_bytes(1, byteorder='big') + data
+    
+        
+        
+
+
+
+client1 = Client(SERVER_NAME, SERVER_PORT, BUFFER_SIZE, LIST_FILES)
+
+
+## Laço para enviar e receber os arquivos
+for fileName in LIST_FILES:
+
+    ## ENVIO DOS ARQUIVOS ##
+    client1.send_file(fileName)
+
+    ## RECEBIMENTO DOS ARQUIVOS ##
+    client1.receive_file()
+
+    
+client1.close()

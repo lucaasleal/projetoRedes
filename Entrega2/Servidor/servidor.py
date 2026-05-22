@@ -6,7 +6,15 @@ import socket # importa a biblioteca socket para criar o socket UDP e realizar a
 import os #importa a biblioteca do sistema para criação do diretório para salvamento de arquivos no servidor
 
 SERVER_PORT = 12000 # porta do servidor
-BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
+BUFFER_SIZE = 1028 # tamanho do buffer para leitura dos arquivos (1KB)
+
+
+class Segment:
+    def _init_(self, sequence_number, data):
+        self.sequence_number = sequence_number
+        self.data = data
+
+
 
 serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do servidor
 serverSocket.bind(('', SERVER_PORT)) # vincula o socket à porta definida

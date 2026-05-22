@@ -13,34 +13,44 @@ LIST_FILES = [
     'hold_the_line.mp3'
 ] # lista de arquivos a serem enviados e tratados pelo servidor
 
+class Client:
+    def _init_(self, server_name, server_port, buffer_size, list_files):
+        self.server_name = server_name
+        self.server_port = server_port
+        self.buffer_size = buffer_size
+        self. list_files = list_files
+    
+    def send_file(self, file_name):
+        numPackage = 0 # reseta o contador de pacotes enviados
+        
+        ## Rotina que abre o arquivo para leitura em modo binário e envia-o em pacotes para o servidor
+        with open('pasta/' + file_name, 'rb') as file:
+            clientSocket.sendto(file_name.encode(), (self.server_name, self.server_port)) # envia o nome do arquivo codificado para o servidor
+            numPackage += 1
+            
+            package = file.read(BUFFER_SIZE) # lê o conteúdo do arquivo em pacotes do tamanho do buffer
+
+            ## Laço que envia os pacotes do arquivo para o servidor enquanto houver conteúdo para ler
+            while package:
+                clientSocket.sendto(package, (self.server_name, self.server_port)) # envia o pacote para o servidor
+                numPackage += 1
+
+                package = file.read(BUFFER_SIZE) # lê o próximo pacote do arquivo até o final do arquivo
+
+            clientSocket.sendto(b'', (self.server_name, self.server_port)) # envia o caractere null para sinalizar o servidor do fim do arquivo
+
+            numPackage += 1
+
+            print(f"Número de pacotes enviados: {numPackage}")
+
+
+
 clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do cliente
 
 ## Laço para enviar e receber os arquivos
 for fileName in LIST_FILES:
 
     ## ENVIO DOS ARQUIVOS ##
-
-    numPackage = 0 # reseta o contador de pacotes enviados
-
-    ## Rotina que abre o arquivo para leitura em modo binário e envia-o em pacotes para o servidor
-    with open('pasta/' + fileName, 'rb') as file:
-        clientSocket.sendto(fileName.encode(), (SERVER_NAME, SERVER_PORT)) # envia o nome do arquivo codificado para o servidor
-        numPackage += 1
-
-        package = file.read(BUFFER_SIZE) # lê o conteúdo do arquivo em pacotes do tamanho do buffer
-
-        ## Laço que envia os pacotes do arquivo para o servidor enquanto houver conteúdo para ler
-        while package:
-            clientSocket.sendto(package, (SERVER_NAME, SERVER_PORT)) # envia o pacote para o servidor
-            numPackage += 1
-
-            package = file.read(BUFFER_SIZE) # lê o próximo pacote do arquivo até o final do arquivo
-
-        clientSocket.sendto(b'', (SERVER_NAME, SERVER_PORT)) # envia o caractere null para sinalizar o servidor do fim do arquivo
-
-        numPackage += 1
-
-        print(f"Número de pacotes enviados: {numPackage}")
 
     ## RECEBIMENTO DOS ARQUIVOS ##
 

@@ -23,7 +23,6 @@ class Server:
         self.data_size = buffer_size - header_size
         self.package_number = 0
 
-        
         self.socket.bind(('', SERVER_PORT)) # vincula o socket à porta definida
         self.create_dir()
     
@@ -47,7 +46,7 @@ class Server:
 
         return msg[0], msg[1:], client
 
-    def rcv_segment(self):
+    def extract_rec_segment(self):
         while True:
             sequence_number, data, client = self.extract_segment()
 
@@ -66,7 +65,7 @@ class Server:
         self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes recebidos
 
-        file_name, client = self.rcv_segment()
+        file_name, client = self.extract_rec_segment()
         print(file_name)
         file_name = file_name.decode()
         
@@ -74,7 +73,7 @@ class Server:
         with open('pasta/' + file_name, 'wb') as file:
             ## Laço que recebe os pacotes do arquivo enviado pelo cliente enquanto houver conteúdo para ler, escrevendo o conteúdo dos pacotes no novo arquivo criado
             while True:
-                data, client = self.rcv_segment()
+                data, client = self.extract_rec_segment()
                 
                 if data == b'': # condição que sinaliza o fim do arquivo enviado pelo cliente                    
                     break

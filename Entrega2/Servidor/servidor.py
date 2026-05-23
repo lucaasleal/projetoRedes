@@ -118,7 +118,6 @@ class Server:
 
     def send_file(self, client, fileName):
         ## RETORNO DOS ARQUIVOS
-        self.ack_number = 1
         self.package_number = 0 # reseta o contador de pacotes enviados
 
         ## Rotina que abre o arquivo para leitura em modo binário, renomea-o e envia-o em pacotes para o cliente
@@ -150,4 +149,4 @@ class Server:
 
 server = Server(SERVER_NAME, SERVER_PORT, BUFFER_SIZE, HEADER_SIZE)
 
-server.run() 
+server.run()

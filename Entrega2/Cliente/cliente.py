@@ -64,7 +64,6 @@ class Client:
 
 
     def send_file(self, file_name: str):
-        self.sequence_number = 0
         self.package_number = 0
 
         self.send_rec_segment(file_name.encode())

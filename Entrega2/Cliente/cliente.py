@@ -3,6 +3,7 @@
 
 import socket # importa a biblioteca socket para criar o socket UDP e realizar a comunicação com o servidor
 import time
+from random import random
 
 SERVER_NAME = 'localhost' # nome do servidor
 SERVER_PORT = 12000 # porta do servidor
@@ -10,11 +11,11 @@ BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
 HEADER_SIZE = 1
 LIST_FILES = [
     'atumalaca.jpg',
-    'boa_tarde_neymar.mp4',
     'poema.txt',
-    'hold_the_line.mp3'
+    'hold_the_line.mp3',
+    'boa_tarde_neymar.mp4'
 ] # lista de arquivos a serem enviados e tratados pelo servidor
-
+PACKET_LOSS = 0.005
 
 class Client:
     def __init__(self, server_name, server_port, buffer_size, header_size, list_files):
@@ -38,14 +39,13 @@ class Client:
     
 
     def send_segment(self, data):
-        segment = self.create_segment(data)
-        
-        self.socket.sendto(segment, (self.server_name, self.server_port))
+        if (random() >= PACKET_LOSS):
+            segment = self.create_segment(data)
+            self.socket.sendto(segment, (self.server_name, self.server_port))
     
     
     def send_rec_segment(self, data):
         self.send_segment(data)
-        self.socket.settimeout(0.1);
         
         while True:
             try:
@@ -60,12 +60,13 @@ class Client:
                 else:
                     self.send_segment(data)
             except:
+                print(f"Pacote {self.package_number} Perdido, enviando novamente...")
                 self.send_segment(data)
 
 
     def send_file(self, file_name: str):
         self.package_number = 0
-
+        self.socket.settimeout(.1);
         self.send_rec_segment(file_name.encode())
         
         ## Rotina que abre o arquivo para leitura em modo binário e envia-o em pacotes para o servidor
@@ -113,6 +114,7 @@ class Client:
     def receive_file(self):
         self.ack_number = 1
         self.package_number = 0 # reseta o contador de pacotes recebidos
+        self.socket.settimeout(100);
 
         file_renamed = self.extract_rec_segment()
         

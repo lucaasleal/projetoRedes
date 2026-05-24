@@ -4,11 +4,13 @@
 
 import socket # importa a biblioteca socket para criar o socket UDP e realizar a comunicação com o cliente
 import os #importa a biblioteca do sistema para criação do diretório para salvamento de arquivos no servidor
+from random import random
 
 SERVER_NAME = 'localhost'
 SERVER_PORT = 12000 # porta do servidor
 BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
 HEADER_SIZE = 1
+PACKET_LOSS = 0.005
 
 class Server:
     def __init__(self, server_name, server_port, buffer_size, header_size):
@@ -64,6 +66,7 @@ class Server:
     def receive_file(self):
         self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes recebidos
+        self.socket.settimeout(10);
 
         file_name, client = self.extract_rec_segment()
         print(file_name)
@@ -92,13 +95,13 @@ class Server:
     
 
     def send_segment(self, data: str, client):
-        segment = self.create_segment(data)
-        self.socket.sendto(segment, client)
+        if (random() >= PACKET_LOSS):
+            segment = self.create_segment(data)
+            self.socket.sendto(segment, client)
     
     
     def send_rec_segment(self, data: str, client):
         self.send_segment(data, client)
-        self.socket.settimeout(0.1);
         
         while True:
             try:
@@ -113,11 +116,13 @@ class Server:
                 else:
                     self.send_segment(data, client)
             except:
+                print(f"Pacote {self.package_number} Perdido, enviando novamente...")
                 self.send_segment(data, client)
 
     def send_file(self, client, fileName):
         ## RETORNO DOS ARQUIVOS
         self.package_number = 0 # reseta o contador de pacotes enviados
+        self.socket.settimeout(.1);
 
         ## Rotina que abre o arquivo para leitura em modo binário, renomea-o e envia-o em pacotes para o cliente
         with open('pasta/' + fileName, 'rb') as file:

@@ -1,17 +1,17 @@
 # Módulo servidor.py: Responsável por receber os arquivos enviados pelo cliente, salvando-os na pasta,
 #                     renomear esses arquivos e retorná-los para o cliente
 
-
 import socket # importa a biblioteca socket para criar o socket UDP e realizar a comunicação com o cliente
 import os #importa a biblioteca do sistema para criação do diretório para salvamento de arquivos no servidor
-from random import random
+from random import random # importa a função random para geração de perda de pacotes aleatória
 from time import time
 
 SERVER_NAME = 'localhost'
-SERVER_PORT = 12000 # porta do servidor
+SERVER_PORT = 12001 # porta do servidor
 BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
 HEADER_SIZE = 1
 PACKET_LOSS = 0.005
+
 
 class Server:
     def __init__(self, server_name, server_port, buffer_size, header_size):
@@ -41,38 +41,51 @@ class Server:
 
         print('O servidor está pronto para receber conexões!')
 
-    def send_ack(self, client):        
+    def send_ack(self, client):  
+        # Envia um ACK ao cliente confirmando o recebimento do último pacote.      
         self.socket.sendto(self.ack_number.to_bytes(1), client)
     
-    def extract_segment(self):
-        msg, client = self.socket.recvfrom(self.buffer_size) # recebe o nome do arquivo renomeado pelo servidor
 
+    # Recebe um segmento do cliente e separa o cabeçalho dos dados.
+    def extract_segment(self):
+        msg, client = self.socket.recvfrom(self.buffer_size)
         return msg[0], msg[1:], client
 
+
+    # Gerenciamento do recebimento e o envio da confirmação 
     def extract_rec_segment(self):
         while True:
             sequence_number, data, client = self.extract_segment()
 
+            # caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
             if sequence_number != self.ack_number:
                 self.ack_number = sequence_number
                 self.package_number += 1
 
+                # manda o ack respectivo
                 self.send_ack(client)
-                
                 return data, client
+            
+            # reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
+            # que o ultimo pacote recebido antes dele
             else:
                 self.send_ack(client)
                 
 
     def receive_file(self):
+        ##Recebe um arquivo completo enviado pelo cliente, renomeia, reenvia e salva na pasta local.
+        self.ack_number = 1
         self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes recebidos
-        self.socket.settimeout(10);
+        self.socket.settimeout(None)
 
+        #primeiro pacote contém o nome do arqui
         file_name, client = self.extract_rec_segment()
         print(file_name)
         file_name = file_name.decode()
-        
+
+        self.socket.settimeout(10)
+
         ## Rotina que recebe os pacotes do arquivo enviado pelo cliente e escreve o conteúdo em um novo arquivo
         with open('pasta/' + file_name, 'wb') as file:
             ## Laço que recebe os pacotes do arquivo enviado pelo cliente enquanto houver conteúdo para ler, escrevendo o conteúdo dos pacotes no novo arquivo criado
@@ -90,17 +103,26 @@ class Server:
         return client, file_name
 
 
-    def create_segment(self, data: str):
-        sequence_number_b = self.sequence_number.to_bytes(1)
+    #Cria o segmento a partir do número de sequência (cabeçalho) e os dados
+    #Foi implementada uma possível geração de erro no pacote, alternando o bit de sequência
+    def create_segment(self, data):
+        if (random() >= PACKET_LOSS):
+            sequence_number_b = self.sequence_number.to_bytes(1)
+        else:
+            false_number = (self.sequence_number + 1) % 2
+            sequence_number_b = false_number.to_bytes(1)
+        
         return sequence_number_b + data
     
 
+    #Foi implementada um possível não envio do pacote, simulando perda no transporte
     def send_segment(self, data: str, client):
         if (random() >= PACKET_LOSS):
             segment = self.create_segment(data)
             self.socket.sendto(segment, client)
     
-    
+
+    #Envia um segmento e aguarda o ACK correspondente (Stop-and-Wait).
     def send_rec_segment(self, data: str, client, timeout):
         initial_timeout = timeout
         send_time = time()
@@ -108,34 +130,39 @@ class Server:
         
         while True:
             try:
-                self.socket.settimeout(timeout)
-                ack, _ = self.socket.recvfrom(self.buffer_size)
+                self.socket.settimeout(timeout)                   # guarda o timeout inicial
+                ack, _ = self.socket.recvfrom(self.buffer_size)   # registra o tempo da primeira tentativa de envio   
                 ack_number = ack[0]
                 
-                if ack_number == self.sequence_number:
-                    self.sequence_number = (self.sequence_number + 1) % 2
+                # verifica se o ack recebido é o ack esperado
+                if ack_number == self.sequence_number:                      
+                    self.sequence_number = (self.sequence_number + 1) % 2   # troca para o próximo num de sequencia esperada
                     self.package_number += 1
-                    
                     break
+                
+                # caso o ack não for o esperado
                 else:
-
-                    elapsed_time = time() - send_time
-                    timeout = initial_timeout - elapsed_time
-                    print(timeout)
-
-                    if timeout <= 0:
-                        raise socket.timeout
+                    elapsed_time = time() - send_time                                     # calcula o tempo desde a primeira tentativa
+                    timeout = initial_timeout - elapsed_time                              # calcula o tempo restante para receber o ack esperado
+                    print(f"ACK errado recebido, tempo restante de timeout: {timeout}")   # foi feita essa implementação porque o recvfrom recebe qualquer ack
+                                                                                          # seja ele o correto ou não
                     
-            except socket.timeout:
-                print(f"Pacote {self.package_number} Perdido, enviando novamente...")
-                timeout = initial_timeout
-
-                send_time = time()
-
+                    # gera uma exceção se o timeout se esgotar
+                    if timeout <= 0:    
+                        raise socket.timeout
+            
+            # envia o pacote novamente, reiniciando todo o processo
+            except socket.timeout:                                                     
+                print(f"Pacote {self.package_number} Perdido, enviando novamente...")   
+                timeout = initial_timeout                                               
+                send_time = time()                                         
                 self.send_segment(data, client)
 
+
+    # Envia um arquivo renomeado de volta ao cliente em múltiplos pacotes.
     def send_file(self, client, fileName):
         ## RETORNO DOS ARQUIVOS
+        self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes enviados
 
         ## Rotina que abre o arquivo para leitura em modo binário, renomea-o e envia-o em pacotes para o cliente
@@ -159,6 +186,7 @@ class Server:
     
 
     def run(self):
+        # Executa o loop principal do servidor, processando arquivos indefinidamente.
         while True:
             client, file_name = self.receive_file()
             self.send_file(client, file_name)

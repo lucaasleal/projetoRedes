@@ -2,11 +2,12 @@
 #                    receber os arquivos renomeados do servidor, salvando-os na pasta
 
 import socket # importa a biblioteca socket para criar o socket UDP e realizar a comunicação com o servidor
-from time import time
-from random import random
+from time import time # inporta a função time para temporização de retransmição do pacote (rdt3.0)
+from random import random # importa a função random para 
 
 SERVER_NAME = 'localhost' # nome do servidor
-SERVER_PORT = 12000 # porta do servidor
+CLIENT_PORT = 10000
+SERVER_PORT = 12001 # porta do servidor
 BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
 HEADER_SIZE = 1
 LIST_FILES = [
@@ -33,49 +34,66 @@ class Client:
             
 
     def create_segment(self, data):
-        sequence_number_b = self.sequence_number.to_bytes(1)
+        # seta o número de sequência para cada segmento
+        # seta aleatoriamente de forma errada com probabilidade definida
+        # usamos 
+        if (random() >= PACKET_LOSS):
+            sequence_number_b = self.sequence_number.to_bytes(1)
+        else:
+            false_number = (self.sequence_number + 1) % 2
+            sequence_number_b = false_number.to_bytes(1)
         
         return sequence_number_b + data
     
 
     def send_segment(self, data):
+        # envia os pacotes, simulando uma perda quando a condição é satisfeita
         if (random() >= PACKET_LOSS):
             segment = self.create_segment(data)
             self.socket.sendto(segment, (self.server_name, self.server_port))
     
     
     def send_rec_segment(self, data, timeout):
-        initial_timeout = timeout
-        send_time = time()
-        self.send_segment(data)
+        initial_timeout = timeout   # guarda o timeout inicial
+        send_time = time()          # registra o tempo da primeira tentativa de envio   
+        self.send_segment(data) 
 
         while True:
             try:
-                self.socket.settimeout(timeout)
-                ack, _ = self.socket.recvfrom(self.buffer_size)
+                self.socket.settimeout(timeout)                  # seta o tempo de espera para o ack
+                ack, _ = self.socket.recvfrom(self.buffer_size)  # aguarda o recebimento do ack    
                 ack_number = ack[0]
                 
+                # verifica se o ack recebido é o ack esperado
                 if ack_number == self.sequence_number:
+                    # atualiza o número de sequência
                     self.sequence_number = (self.sequence_number + 1) % 2
                     self.package_number += 1
-                    
                     break
+                
+                # caso o ack não for o esperado
                 else:
-                    elapsed_time = time() - send_time
-                    timeout = initial_timeout - elapsed_time
-                    print(timeout)
-
-                    if timeout <= 0:
+                    elapsed_time = time() - send_time                                     # calcula o tempo desde a primeira tentativa
+                    timeout = initial_timeout - elapsed_time                              # calcula o tempo restante para receber o ack esperado
+                    print(f"ACK errado recebido, tempo restante de timeout: {timeout}")   # foi feita essa implementação porque o recvfrom recebe qualquer ack
+                                                                                          # seja ele o correto ou não
+                    
+                    # gera uma exceção se o timeout se esgotar
+                    if timeout <= 0:  
                         raise socket.timeout
 
+            # envia o pacote novamente, reiniciando todo o processo
             except socket.timeout:
                 print(f"Pacote {self.package_number} Perdido, enviando novamente...")
                 timeout = initial_timeout
+                send_time = time()
                 self.send_segment(data)
 
-
+     # Envia um arquivo renomeado de volta ao cliente em múltiplos pacotes.
     def send_file(self, file_name: str):
-        self.package_number = 0
+        self.sequence_number = 0
+        self.package_number = 0  # reseta o contador de pacotes enviados
+        
         self.send_rec_segment(file_name.encode(), .1)
         
         ## Rotina que abre o arquivo para leitura em modo binário e envia-o em pacotes para o servidor
@@ -94,36 +112,42 @@ class Client:
         print(f"Número de pacotes enviados e reconhecidos: {self.package_number}")
     
 
-
+    # envia o segmento com ack (confirmação de recebimento)
     def send_ack(self):
         self.socket.sendto(self.ack_number.to_bytes(1), (self.server_name, self.server_port))
     
+    # recebe o segmento e extrai o número de sequência e os dados
     def extract_segment(self):
         msg, _ = self.socket.recvfrom(self.buffer_size) # recebe o nome do arquivo renomeado pelo servidor
-        
         return msg[0], msg[1:]
 
-
+    # gerenciamento do recebimento e o envio da confirmação 
     def extract_rec_segment(self):
         while True:
             seq_server_number, data = self.extract_segment()
             
+            # caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
             if seq_server_number != self.ack_number:
 
+                # atualiza o número do ultimo ack para o número de sequência do pacote recebido agora
                 self.ack_number = seq_server_number
                 self.package_number += 1
 
+                # manda o ack respectivo
                 self.send_ack()
                                 
                 return data
             else:
+                # reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
+                # que o ultimo pacote recebido antes dele
                 self.send_ack()
     
        
     def receive_file(self):
         self.ack_number = 1
+        self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes recebidos
-        self.socket.settimeout(100);
+        self.socket.settimeout(100)
 
         file_renamed = self.extract_rec_segment()
         

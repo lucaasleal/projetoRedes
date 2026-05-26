@@ -5,6 +5,7 @@
 import socket # importa a biblioteca socket para criar o socket UDP e realizar a comunicação com o cliente
 import os #importa a biblioteca do sistema para criação do diretório para salvamento de arquivos no servidor
 from random import random
+from time import time
 
 SERVER_NAME = 'localhost'
 SERVER_PORT = 12000 # porta do servidor
@@ -100,11 +101,14 @@ class Server:
             self.socket.sendto(segment, client)
     
     
-    def send_rec_segment(self, data: str, client):
+    def send_rec_segment(self, data: str, client, timeout):
+        initial_timeout = timeout
+        send_time = time()
         self.send_segment(data, client)
         
         while True:
             try:
+                self.socket.settimeout(timeout)
                 ack, _ = self.socket.recvfrom(self.buffer_size)
                 ack_number = ack[0]
                 
@@ -114,30 +118,40 @@ class Server:
                     
                     break
                 else:
-                    self.send_segment(data, client)
-            except:
+
+                    elapsed_time = time() - send_time
+                    timeout = initial_timeout - elapsed_time
+                    print(timeout)
+
+                    if timeout <= 0:
+                        raise socket.timeout
+                    
+            except socket.timeout:
                 print(f"Pacote {self.package_number} Perdido, enviando novamente...")
+                timeout = initial_timeout
+
+                send_time = time()
+
                 self.send_segment(data, client)
 
     def send_file(self, client, fileName):
         ## RETORNO DOS ARQUIVOS
         self.package_number = 0 # reseta o contador de pacotes enviados
-        self.socket.settimeout(.1);
 
         ## Rotina que abre o arquivo para leitura em modo binário, renomea-o e envia-o em pacotes para o cliente
         with open('pasta/' + fileName, 'rb') as file:
             file_renamed = 'leilao_' + fileName ## tratamento para enviar o arquivo renomeado para o cliente
 
-            self.send_rec_segment(file_renamed.encode(), client)
+            self.send_rec_segment(file_renamed.encode(), client, .1)
 
             package = file.read(self.data_size) # lê o conteúdo do arquivo em pacotes do tamanho do buffer
 
             ## Laço que envia os pacotes do arquivo para o cliente enquanto houver conteúdo para ler
             while package:
-                self.send_rec_segment(package, client) # envia o pacote para o cliente
+                self.send_rec_segment(package, client, .1) # envia o pacote para o cliente
                 package = file.read(self.data_size) # lê o próximo pacote do arquivo até o final do arquivo
 
-            self.send_rec_segment(b'', client) # envia o caractere null para sinalizar o cliente do fim do arquivo
+            self.send_rec_segment(b'', client, .1) # envia o caractere null para sinalizar o cliente do fim do arquivo
 
             print(f"Arquivo {file_renamed} retornado com sucesso!")
             print(f"Número de pacotes enviados: {self.package_number}")

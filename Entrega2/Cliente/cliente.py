@@ -2,7 +2,7 @@
 #                    receber os arquivos renomeados do servidor, salvando-os na pasta
 
 import socket # importa a biblioteca socket para criar o socket UDP e realizar a comunicação com o servidor
-import time
+from time import time
 from random import random
 
 SERVER_NAME = 'localhost' # nome do servidor
@@ -44,11 +44,14 @@ class Client:
             self.socket.sendto(segment, (self.server_name, self.server_port))
     
     
-    def send_rec_segment(self, data):
+    def send_rec_segment(self, data, timeout):
+        initial_timeout = timeout
+        send_time = time()
         self.send_segment(data)
-        
+
         while True:
             try:
+                self.socket.settimeout(timeout)
                 ack, _ = self.socket.recvfrom(self.buffer_size)
                 ack_number = ack[0]
                 
@@ -58,16 +61,22 @@ class Client:
                     
                     break
                 else:
-                    self.send_segment(data)
-            except:
+                    elapsed_time = time() - send_time
+                    timeout = initial_timeout - elapsed_time
+                    print(timeout)
+
+                    if timeout <= 0:
+                        raise socket.timeout
+
+            except socket.timeout:
                 print(f"Pacote {self.package_number} Perdido, enviando novamente...")
+                timeout = initial_timeout
                 self.send_segment(data)
 
 
     def send_file(self, file_name: str):
         self.package_number = 0
-        self.socket.settimeout(.1);
-        self.send_rec_segment(file_name.encode())
+        self.send_rec_segment(file_name.encode(), .1)
         
         ## Rotina que abre o arquivo para leitura em modo binário e envia-o em pacotes para o servidor
         with open('pasta/' + file_name, 'rb') as file:
@@ -76,11 +85,11 @@ class Client:
                 data = file.read(self.data_size) # lê o conteúdo do arquivo em pacotes do tamanho do buffer
                 
                 if data:
-                    self.send_rec_segment(data) # envia o pacote para o servidor
+                    self.send_rec_segment(data, .1) # envia o pacote para o servidor
                 else:
                     break
             
-        self.send_rec_segment(b'') # envia o caractere null para sinalizar o servidor do fim do arquivo
+        self.send_rec_segment(b'', .1) # envia o caractere null para sinalizar o servidor do fim do arquivo
 
         print(f"Número de pacotes enviados e reconhecidos: {self.package_number}")
     

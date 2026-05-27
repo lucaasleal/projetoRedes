@@ -82,15 +82,15 @@ Os ACKs são segmentos de 1 byte apenas, contendo o número de sequência confir
 
 
 ## Simulação de Perdas e Erros
-O procedimento de perda de pacote foi feito utilizando da biblioteca **random** nativa do Python. De forma simplificada, quando o transmissor manda um arquivo, há uma chance definida pelo parâmetro **PACKET_LOSS** (valor padrão de 0.5%) da função **send_segment()** não realizar o envio do segmento criado para o receptor. Dessa forma, emulando a perda de pacotes que podem acontecer durante a transmissão TCP.
+O procedimento de perda de pacote foi feito utilizando da biblioteca *random* nativa do Python. De forma simplificada, quando o transmissor manda um arquivo, há uma chance definida pelo parâmetro *PACKET_LOSS* (valor padrão de 0.5%) da função *send_segment()* não realizar o envio do segmento criado para o receptor. Dessa forma, emulando a perda de pacotes que podem acontecer durante a transmissão TCP.
 
-Para a emulação de entrega de pacotes com valores do cabeçalho incorretas (que, nesse caso, somente o número de sequência que pode ser entregue errado), foi-se realizado um procedimento parecido. Durante a criação do segmento (realizada na função **create_segment()**), há uma chance definida pelo parâmetro **PACKET_LOSS** de o valor do número de sequência ser trocado por um outro valor incorreto. Através dessa estratégia, o código consegue simular a situação em que o pacote entregue possui erros no ACK/SEQ.
+Para a emulação de entrega de pacotes com valores do cabeçalho incorretas (que, nesse caso, somente o número de sequência que pode ser entregue errado), foi-se realizado um procedimento parecido. Durante a criação do segmento (realizada na função *create_segment()*), há uma chance definida pelo parâmetro *PACKET_LOSS* de o valor do número de sequência ser trocado por um outro valor incorreto. Através dessa estratégia, o código consegue simular a situação em que o pacote entregue possui erros no ACK/SEQ.
 
 
 ## Tratamento de Timeout
-Para a implementação do timeout, ou seja, quando o transmissor retransmite o pacote devido a falta de confirmação (ACK) do receptor, foi utilizada a biblioteca **time** nativa do Python para calcular o tempo percorrido durante as esperas do transmissor. Como a função **socket.recvfrom()** é bloqueante (o programa "trava" ao executar, uma vez que ele está esperando o pacote ACK do receptor), foi definido o tempo de espera da função utilizando **socket.settimeout()**. No código, caso o tempo de espera seja maior que 0.1 segundos, o transmissor irá entender que houve a perda do pacote ACK e realizará o reenvio do pacote.
+Para a implementação do timeout, ou seja, quando o transmissor retransmite o pacote devido a falta de confirmação (ACK) do receptor, foi utilizada a biblioteca *time* nativa do Python para calcular o tempo percorrido durante as esperas do transmissor. Como a função *socket.recvfrom()* é bloqueante (o programa "trava" ao executar, uma vez que ele está esperando o pacote ACK do receptor), foi definido o tempo de espera da função utilizando *socket.settimeout()*. No código, caso o tempo de espera seja maior que 0.1 segundos, o transmissor irá entender que houve a perda do pacote ACK e realizará o reenvio do pacote.
 
-Para o caso em que o pacote recebido estivesse com erro 
+Para o caso em que o pacote ACK recebido pelo transmissor está com erro do número de sequência, o modelo rdt3.0 dita que o transmissor deve desconsiderar esse pacote e esperar o próximo pacote, isto é, o temporizador não é . Implementar essa mecânica exigiu que se fosse criada uma variável *timeout* para armazenar o tempo percorrido desde a entrega do pacote de dados. Ao transmissor receber o pacote com erro, ele reconhece e atualiza o tempo de espera da função *socket.recvfrom()* através de *socket.settimeout()* com um novo valor (*initial_timeout - elapsed_time*) e continua a aguardar.
 
 
 ## Sincronização dos Números de Sequência

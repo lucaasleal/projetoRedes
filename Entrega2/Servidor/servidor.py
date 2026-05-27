@@ -4,13 +4,13 @@
 import socket # importa a biblioteca socket para criar o socket UDP e realizar a comunicação com o cliente
 import os #importa a biblioteca do sistema para criação do diretório para salvamento de arquivos no servidor
 from random import random # importa a função random para geração de perda de pacotes aleatória
-from time import time
+from time import time # importa a função time para temporização de retransmição do pacote (rdt3.0)
 
 SERVER_NAME = 'localhost'
 SERVER_PORT = 12001 # porta do servidor
 BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
-HEADER_SIZE = 1
-PACKET_LOSS = 0.005
+HEADER_SIZE = 1 # tamanho do cabeçalho
+PACKET_ERROR_RATE = 0.005 # taxa média de pacotes que serão perdidos ou serão corrompidos
 
 
 class Server:
@@ -29,6 +29,7 @@ class Server:
         self.socket.bind(('', SERVER_PORT)) # vincula o socket à porta definida
         self.create_dir()
     
+    # Cria o diretório para armazenar os arquivos
     def create_dir(self):
         dir_name = "pasta"
 
@@ -40,46 +41,47 @@ class Server:
             print(f"'{dir_name}' já existe.")
 
         print('O servidor está pronto para receber conexões!')
-
-    def send_ack(self, client):  
-        # Envia um ACK ao cliente confirmando o recebimento do último pacote.      
-        self.socket.sendto(self.ack_number.to_bytes(1), client)
     
+    # Envia um ACK ao cliente confirmando o recebimento do último pacote.      
+    def send_ack(self, client):  
+        self.socket.sendto(self.ack_number.to_bytes(1), client)
 
     # Recebe um segmento do cliente e separa o cabeçalho dos dados.
     def extract_segment(self):
         msg, client = self.socket.recvfrom(self.buffer_size)
         return msg[0], msg[1:], client
 
-
     # Gerenciamento do recebimento e o envio da confirmação 
     def extract_rec_segment(self):
         while True:
             sequence_number, data, client = self.extract_segment()
 
-            # caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
+            # Caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
             if sequence_number != self.ack_number:
                 self.ack_number = sequence_number
                 self.package_number += 1
+                
+                print(f"Pacote {self.package_number} recebido corretamente")
 
                 # manda o ack respectivo
                 self.send_ack(client)
                 return data, client
             
-            # reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
+            # Reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
             # que o ultimo pacote recebido antes dele
             else:
-                self.send_ack(client)
-                
+                print("Pacote esperado não foi recebido, enviando ack...")
 
+                self.send_ack(client)
+
+    # Recebe um arquivo completo enviado pelo cliente, renomeia, reenvia e salva na pasta local.
     def receive_file(self):
-        ##Recebe um arquivo completo enviado pelo cliente, renomeia, reenvia e salva na pasta local.
         self.ack_number = 1
         self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes recebidos
-        self.socket.settimeout(None)
+        self.socket.settimeout(None) # Trava o temporizador até receber o próximo pacote
 
-        #primeiro pacote contém o nome do arqui
+        # primeiro pacote contém o nome do arqui
         file_name, client = self.extract_rec_segment()
         print(file_name)
         file_name = file_name.decode()
@@ -102,32 +104,32 @@ class Server:
         
         return client, file_name
 
-
-    #Cria o segmento a partir do número de sequência (cabeçalho) e os dados
-    #Foi implementada uma possível geração de erro no pacote, alternando o bit de sequência
+    # Cria o segmento a partir do número de sequência (cabeçalho) e os dados
+    # Foi implementada uma possível geração de erro no pacote, alternando o bit de sequência
     def create_segment(self, data):
-        if (random() >= PACKET_LOSS):
-            sequence_number_b = self.sequence_number.to_bytes(1)
-        else:
+        sequence_number_b = self.sequence_number.to_bytes(1)
+        
+        # Condicional para corromper o pacote na taxa média de erro estabelecida
+        if (random() < PACKET_ERROR_RATE):
             false_number = (self.sequence_number + 1) % 2
             sequence_number_b = false_number.to_bytes(1)
         
         return sequence_number_b + data
-    
 
     #Foi implementada um possível não envio do pacote, simulando perda no transporte
     def send_segment(self, data: str, client):
-        if (random() >= PACKET_LOSS):
+        # Condicional para perder o pacote na taxa média de erro estabelecida
+        if (random() >= PACKET_ERROR_RATE):
             segment = self.create_segment(data)
             self.socket.sendto(segment, client)
-    
 
-    #Envia um segmento e aguarda o ACK correspondente (Stop-and-Wait).
+    # Envia um segmento e aguarda o ACK correspondente (Stop-and-Wait).
     def send_rec_segment(self, data: str, client, timeout):
         initial_timeout = timeout
-        send_time = time()
+        send_time = time() # recebe o tempo atual
         self.send_segment(data, client)
         
+        # Laço que realiza a transmissão e retransmissão conforme rdt3.0
         while True:
             try:
                 self.socket.settimeout(timeout)                   # guarda o timeout inicial
@@ -146,14 +148,13 @@ class Server:
                     timeout = initial_timeout - elapsed_time                              # calcula o tempo restante para receber o ack esperado
                     print(f"ACK errado recebido, tempo restante de timeout: {timeout}")   # foi feita essa implementação porque o recvfrom recebe qualquer ack
                                                                                           # seja ele o correto ou não
-                    
                     # gera uma exceção se o timeout se esgotar
-                    if timeout <= 0:    
+                    if timeout <= 0:
                         raise socket.timeout
             
             # envia o pacote novamente, reiniciando todo o processo
             except socket.timeout:                                                     
-                print(f"Pacote {self.package_number} Perdido, enviando novamente...")   
+                print(f"Timeout! Retransmitindo o pacote {self.package_number + 1}") # o primeiro pacote começa com 1
                 timeout = initial_timeout                                               
                 send_time = time()                                         
                 self.send_segment(data, client)
@@ -161,7 +162,6 @@ class Server:
 
     # Envia um arquivo renomeado de volta ao cliente em múltiplos pacotes.
     def send_file(self, client, fileName):
-        ## RETORNO DOS ARQUIVOS
         self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes enviados
 
@@ -184,15 +184,12 @@ class Server:
             print(f"Número de pacotes enviados: {self.package_number}")
             print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
     
-
+    # Executa o loop principal do servidor, processando arquivos indefinidamente
     def run(self):
-        # Executa o loop principal do servidor, processando arquivos indefinidamente.
         while True:
             client, file_name = self.receive_file()
             self.send_file(client, file_name)
-        
-        
+
 
 server = Server(SERVER_NAME, SERVER_PORT, BUFFER_SIZE, HEADER_SIZE)
-
 server.run()

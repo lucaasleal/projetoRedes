@@ -113,6 +113,6 @@ Sem esses resets, o segundo arquivo pode começar com números trocados e o prim
 | 'SERVER_PORT'  | 12000 | Porta utilizada pelo servidor |
 | 'BUFFER_SIZE'  | 1024  | Quantidade de bytes de um pacote |
 | 'HEADER_SIZE'  | 1  |  Quantidade de bytes do cabeçalho (ack/seq)
-| 'PACKET_LOSS' | 0.005 | Taxa de perda para geração de perdas simuladas |
+| 'PACKET_ERROR_RATE' | 0.005 | Taxa de perda para geração de perdas simuladas |
 | Timeout Cliente | 0.1s | Timeout sobre o pacote enviado |
 | Timeout Servidor | 10s | Timeout por pacote durante recebimento |

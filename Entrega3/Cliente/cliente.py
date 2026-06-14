@@ -9,30 +9,35 @@ SERVER_NAME = 'localhost' # nome do servidor
 SERVER_PORT = 12001 # porta do servidor
 BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
 HEADER_SIZE = 1 # tamanho do cabeçalho
-LIST_FILES = [
-    'atumalaca.jpg',
-    'poema.txt',
-    'hold_the_line.mp3',
-    'boa_tarde_neymar.mp4'
-] # lista de arquivos a serem enviados e tratados pelo servidor
 PACKET_ERROR_RATE = 0.005 # taxa média de pacotes que serão perdidos ou serão corrompidos
 
+COMMAND_LIST = """
+\033[1;32;43m=-=-=-=-=-=-=-=LISTA DE COMANDOS=-=-=-=-=-=-=-=\033[m
+\033[32mConectar ao sistema - \x1B[3mlogin <nome_do_usuario>\x1B[0m
+\033[32mDar um Lance - \x1B[3mbid <id_item> <valor>\x1B[0m
+\033[32mVer itens e preços - \x1B[3mlist\x1B[0m
+\033[32mVer quem está ganhando - \x1B[3mstatus\x1B[0m
+\033[32mSair do sistema - \x1B[3mlogout\x1B[0m \033[m
+\033[1;32;43m=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\033[m
+"""
 
 class Client:
-    def __init__(self, server_name, server_port, buffer_size, header_size, list_files):
+    def __init__(self, server_name, server_port, buffer_size, header_size):
         self.server_name = server_name
         self.server_port = server_port
         self.buffer_size = buffer_size
         self.header_size = header_size
-        self.list_files = list_files
         
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do cliente
         self.sequence_number = 0
         self.ack_number = 1
         self.data_size = buffer_size - header_size
         self.package_number = 0
-            
+        
+        self.list_items = []
+        self.client_name = None
 
+            
     # Cria o segmento a partir do número de sequência (cabeçalho) e os dados
     # Foi implementada uma possível geração de erro no pacote, alternando o bit de sequência
     def create_segment(self, data):
@@ -139,15 +144,19 @@ class Client:
                 
                 self.send_ack()
     
-    # Recebe um arquivo completo enviado pelo servidor e salva na pasta local.
-    def receive_file(self):
+    #
+    def receive(self, save=False):
         self.ack_number = 1
         self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes recebidos
         self.socket.settimeout(100)
 
-        # primeiro pacote contém o nome renomeado
-        file_renamed = self.extract_rec_segment()
+        msg = self.extract_rec_segment()
+
+        if not save:
+            return msg
+        
+        file_renamed = msg
         
         ## Rotina que recebe os pacotes do arquivo renomeado enviado pelo servidor e escreve o conteúdo em um novo arquivo (com nome novo)
         with open('pasta/' + file_renamed.decode(), 'wb') as file:
@@ -163,22 +172,84 @@ class Client:
             print(f"Arquivo {file_renamed.decode()} retornado com sucesso!")
             print(f"Número de pacotes recebidos e reconhecidos: {self.package_number}")
             print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-        
-    ## Laço principal para enviar e receber os arquivos
-    def run(self):
-        for fileName in self.list_files:
-            ## ENVIO DOS ARQUIVOS ##
-            self.send_file(fileName)
+        return "salvo"
+    
+    # Recebe um arquivo completo enviado pelo servidor e salva na pasta local.
+    def receive_str(self):
+        self.ack_number = 1
+        self.sequence_number = 0
+        self.socket.settimeout(100)
 
-            ## RECEBIMENTO DOS ARQUIVOS ##
-            self.receive_file()
+        return self.extract_rec_segment().decode()
     
     # Fecha o socket após o envio e recebimento de todos os arquivos
     def close(self):
         self.socket.close()
 
+    ## Laço principal para enviar e receber os arquivos
+    def run(self):
+        while True:
+            command = input("Insira o comando: ")            
+            self.send_file(command)
+            
+            match command.split()[0]:
+                case "help":
+                    print(COMMAND_LIST)
+                case "login":
+                    self.send_file(command)
+                    
+                    while True:
+                        answer = self.receive()
+                        
+                        if answer == "você está online":
+                            self.client_name = command.split()[1]
+                            print(f"Usuário \x1B[3m{self.client_name}\x1B[0m conectado!")
+                            break
+                        elif answer == "você foi rejeitado":
+                            print(f"Usuário \x1B[3m{self.client_name}\x1B[0m não conectado!")
+                            break
+                        else:
+                            print(answer)
+                case "bid":
+                    self.send_file(command)
+                    
+                    while True:
+                        answer = self.receive()
+                    
+                        if answer == "lance registrado":
+                            id_item, val = command.split()[1], command.split[2]
+                            print(f"Usuário fez o lance no item {id_item} com valor R${val}")
+                            break
+                        elif answer == "erro no lance":
+                            print("Usuário não conseguiu fazer o lance")
+                            break
+                        else:
+                            print(answer)
+                    
+                case "list":
+                    self.send_file(command)
+                    
+                case "status":
+                    self.send_file(command)
+                case "logout":
+                    if self.client_name is None:
+                        print(f"Usuário \x1B[3m{self.client_name}\x1B[0m não conectado!")
+                    else:
+                        self.send_file(command)
+                        print("Desfazendo a conexão...")
+                case _:
+                    print("Comando desconhecido (digite \x1B[3mhelp\x1B[0m para ver lista de comandos)")
+
+        
+        for fileName in self.list_files:
+            ## ENVIO DOS ARQUIVOS ##
+            self.send_file(fileName)
+
+            ## RECEBIMENTO DOS ARQUIVOS ##
+            self.receive()
+    
+
     
 # Criação do cliente e do seu socket
-client1 = Client(SERVER_NAME, SERVER_PORT, BUFFER_SIZE, HEADER_SIZE, LIST_FILES)
-client1.run()
-client1.close()
+client = Client(SERVER_NAME, SERVER_PORT, BUFFER_SIZE, HEADER_SIZE)
+client.run()

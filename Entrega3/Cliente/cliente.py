@@ -2,6 +2,7 @@
 #                    receber os arquivos renomeados do servidor, salvando-os na pasta
 
 import socket # importa a biblioteca socket para criar o socket UDP e realizar a comunicação com o servidor
+import os #importa a biblioteca do sistema para criação do diretório para salvamento de arquivos no servidor
 from random import random # importa a função random para geração de perda de pacotes aleatória
 from time import time # importa a função time para temporização de retransmição do pacote (rdt3.0)
 
@@ -35,9 +36,20 @@ class Client:
         self.package_number = 0
         
         self.list_items = []
-        self.client_name = None
+    
+    # Cria o diretório para armazenar os arquivos
+    def create_dir(self, str: client_name):
+        dir_name = "pasta_" + client_name
 
-            
+        # Verifica se não existe antes de criar
+        if not os.path.exists(dir_name):
+            os.makedirs(dir_name)
+            print(f"'{dir_name}' criada.")
+        else:
+            print(f"'{dir_name}' já existe.")
+
+        print('O servidor está pronto para receber conexões!')
+
     # Cria o segmento a partir do número de sequência (cabeçalho) e os dados
     # Foi implementada uma possível geração de erro no pacote, alternando o bit de sequência
     def create_segment(self, data):
@@ -92,10 +104,13 @@ class Client:
                 self.send_segment(data)
 
     # Método geral para transmissão e retransmissão de pacotes utilizando rdt3.0
-    def send_file(self, file_name: str):
+    def send(self, command, save=False):
         self.sequence_number = 0
         self.package_number = 0
-        self.send_rec_segment(file_name.encode(), .1)
+        self.send_rec_segment(command.encode(), .1)
+
+        if not save:
+            return
         
         ## Rotina que abre o arquivo para leitura em modo binário e envia-o em pacotes para o servidor
         with open('pasta/' + file_name, 'rb') as file:
@@ -172,7 +187,7 @@ class Client:
             print(f"Arquivo {file_renamed.decode()} retornado com sucesso!")
             print(f"Número de pacotes recebidos e reconhecidos: {self.package_number}")
             print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-        return "salvo"
+        return
     
     # Recebe um arquivo completo enviado pelo servidor e salva na pasta local.
     def receive_str(self):
@@ -190,8 +205,14 @@ class Client:
     def run(self):
         while True:
             command = input("Insira o comando: ")            
-            self.send_file(command)
-            
+            self.send(command)
+            # --------------------
+            answer = self.receive()
+            print(answer)
+
+            if (command.split()[0] == "login" and answer == "você está online"):
+                self.create_dir(command.split()[1])
+
             match command.split()[0]:
                 case "help":
                     print(COMMAND_LIST)

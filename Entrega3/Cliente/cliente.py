@@ -5,6 +5,7 @@ import socket # importa a biblioteca socket para criar o socket UDP e realizar a
 import os #importa a biblioteca do sistema para criação do diretório para salvamento de arquivos no servidor
 from random import random # importa a função random para geração de perda de pacotes aleatória
 from time import time # importa a função time para temporização de retransmição do pacote (rdt3.0)
+import threading
 
 SERVER_NAME = 'localhost' # nome do servidor
 SERVER_PORT = 12001 # porta do servidor
@@ -30,8 +31,8 @@ class Client:
         self.header_size = header_size
         
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do cliente
-        self.sequence_number = 0
-        self.ack_number = 1
+        self.seqnumber_rcv = 0
+        self.acknumber_snd = 1
         self.data_size = buffer_size - header_size
         self.package_number = 0
         
@@ -79,9 +80,10 @@ class Client:
                 self.socket.settimeout(timeout)                  # guarda o timeout inicial
                 ack, _ = self.socket.recvfrom(self.buffer_size)  # registra o tempo da primeira tentativa de envio   
                 ack_number = ack[0]
+                msg = ack[1:]
                 
                 # Condicional para verificar se o ack recebido é o ack esperado
-                if ack_number == self.sequence_number:                      
+                if ack_number == self.sequence_number and (msg == '' or msg == None):                      
                     self.sequence_number = (self.sequence_number + 1) % 2   # troca para o próximo num de sequencia esperada
                     self.package_number += 1
                     
@@ -120,6 +122,8 @@ class Client:
     def extract_rec_segment(self):
         while True:
             seq_server_number, data = self.extract_segment()
+            if data is None: # vê se é ack
+                continue
             
             # Caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
             if seq_server_number != self.ack_number:
@@ -182,7 +186,7 @@ class Client:
         self.socket.close()
 
     ## Laço principal para enviar e receber os arquivos
-    def run(self):
+    def run_sender(self):
         self.create_dir()
         
         while True:
@@ -193,20 +197,20 @@ class Client:
             if command == "exit":
                 break
             # -----------------------
-            
+
+    def run_receiver(self):
+         while True:
             # ------ THREAD 2 -------
             answer = self.receive()
             print(answer)
             
             if answer == "você está online":
-                self.create_dir(command.split()[1])
+                self.create_dir("pasta")
             
             if answer == "você arrematou um item":
                 self.receive(save = True)
             # -----------------------
             
-
-
 
 """
             match command.split()[0]:
@@ -232,5 +236,13 @@ class Client:
     
 # Criação do cliente e do seu socket
 client = Client(SERVER_NAME, SERVER_PORT, BUFFER_SIZE, HEADER_SIZE)
-client.run()
+sender = threading.Thread(target=client.run_sender)
+receiver = threading.Thread(target=client.run_receiver)
+
+sender.start()
+receiver.start()
+
+sender.join()
+receiver.join()
+
 client.close()

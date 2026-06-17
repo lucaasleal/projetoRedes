@@ -31,8 +31,8 @@ class Client:
         self.header_size = header_size
         
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do cliente
-        self.seqnumber_rcv = 0
-        self.acknumber_snd = 1
+        self.sequence_number = 0
+        self.ack_number = 1
         self.data_size = buffer_size - header_size
         self.package_number = 0
         
@@ -79,11 +79,10 @@ class Client:
             try:
                 self.socket.settimeout(timeout)                  # guarda o timeout inicial
                 ack, _ = self.socket.recvfrom(self.buffer_size)  # registra o tempo da primeira tentativa de envio   
-                ack_number = ack[0]
-                msg = ack[1:]
+                ack_number, data_server = ack[0], ack[1:]
                 
                 # Condicional para verificar se o ack recebido é o ack esperado
-                if ack_number == self.sequence_number and (msg == '' or msg == None):                      
+                if ack_number == self.sequence_number and data_server.decode() == "":
                     self.sequence_number = (self.sequence_number + 1) % 2   # troca para o próximo num de sequencia esperada
                     self.package_number += 1
                     
@@ -105,7 +104,6 @@ class Client:
 
     # Método geral para transmissão e retransmissão de pacotes utilizando rdt3.0
     def send(self, command):
-        self.sequence_number = 0
         self.package_number = 0
         self.send_rec_segment(command.encode(), .1)
 
@@ -122,11 +120,9 @@ class Client:
     def extract_rec_segment(self):
         while True:
             seq_server_number, data = self.extract_segment()
-            if data is None: # vê se é ack
-                continue
             
             # Caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
-            if seq_server_number != self.ack_number:
+            if seq_server_number != self.ack_number and data.decode() != "":
                 self.ack_number = seq_server_number
                 self.package_number += 1
                 
@@ -143,10 +139,8 @@ class Client:
                 
                 self.send_ack()
     
-    #
+    # Recebe um arquivo completo enviado pelo servidor e salva na pasta local.
     def receive(self, save: bool = False):
-        self.ack_number = 1
-        self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes recebidos
         self.socket.settimeout(100)
 
@@ -172,15 +166,7 @@ class Client:
             print(f"Número de pacotes recebidos e reconhecidos: {self.package_number}")
             print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
         return
-    
-    # Recebe um arquivo completo enviado pelo servidor e salva na pasta local.
-    def receive_str(self):
-        self.ack_number = 1
-        self.sequence_number = 0
-        self.socket.settimeout(100)
 
-        return self.extract_rec_segment().decode()
-    
     # Fecha o socket após o envio e recebimento de todos os arquivos
     def close(self):
         self.socket.close()
@@ -202,15 +188,27 @@ class Client:
          while True:
             # ------ THREAD 2 -------
             answer = self.receive()
-            print(answer)
+            if answer:
+                print(answer)
             
             if answer == "você está online":
                 self.create_dir("pasta")
             
             if answer == "você arrematou um item":
                 self.receive(save = True)
+                
             # -----------------------
-            
+    
+    def run(self):
+        sender = threading.Thread(target = self.run_sender)
+        receiver = threading.Thread(target = self.run_receiver)
+
+        sender.start()
+        receiver.start()
+
+        sender.join()
+        receiver.join()
+
 
 """
             match command.split()[0]:
@@ -236,13 +234,6 @@ class Client:
     
 # Criação do cliente e do seu socket
 client = Client(SERVER_NAME, SERVER_PORT, BUFFER_SIZE, HEADER_SIZE)
-sender = threading.Thread(target=client.run_sender)
-receiver = threading.Thread(target=client.run_receiver)
 
-sender.start()
-receiver.start()
-
-sender.join()
-receiver.join()
-
+client.run()
 client.close()

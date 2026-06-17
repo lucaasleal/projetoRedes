@@ -19,7 +19,8 @@ COMMAND_LIST = """
 \033[32mDar um Lance - \x1B[3mbid <id_item> <valor>\x1B[0m
 \033[32mVer itens e preços - \x1B[3mlist\x1B[0m
 \033[32mVer quem está ganhando - \x1B[3mstatus\x1B[0m
-\033[32mSair do sistema - \x1B[3mlogout\x1B[0m \033[m
+\033[32mSair do leilão - \x1B[3mlogout\x1B[0m \033[m
+\033[32mSair do sistema - \x1B[3mexit\x1B[0m \033[m
 \033[1;32;43m=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\033[m
 """
 
@@ -36,13 +37,16 @@ class Client:
         self.data_size = buffer_size - header_size
         self.package_number = 0
         
-        self.list_items = []
-    
+        self.client_name = ""
+        self.online = False
+        self.login_logout_request = False
+        self.exit = False
+
     # Cria o diretório para armazenar os arquivos
-    def create_dir(self, dir_name: str = "pasta_clientes"):
+    def create_dir(self, dir_name):
         # Verifica se não existe antes de criar
         if not os.path.exists(dir_name):
-            os.makedirs(dir_name)
+            os.makedirs(f"pasta\{dir_name}")
             print(f"'{dir_name}' criada.")
         else:
             print(f"'{dir_name}' já existe.")
@@ -128,8 +132,6 @@ class Client:
                 
                 print(f"Pacote {self.package_number} recebido corretamente")
                 
-                # manda o ack respectivo
-                self.send_ack()
                 return data, is_file
             
             # reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
@@ -140,19 +142,19 @@ class Client:
                 self.send_ack()
     
     # Recebe um arquivo completo enviado pelo servidor e salva na pasta local.
-    def receive(self, save: bool = False):
+    def receive(self):
         self.package_number = 0 # reseta o contador de pacotes recebidos
         self.socket.settimeout(100)
 
-        msg = self.extract_rec_segment()
+        msg, is_file = self.extract_rec_segment()
 
-        if not save:
+        if not is_file:
             return msg
-        
-        file_renamed = msg
+
+        file_name = msg
         
         ## Rotina que recebe os pacotes do arquivo renomeado enviado pelo servidor e escreve o conteúdo em um novo arquivo (com nome novo)
-        with open('pasta/pasta_' + file_renamed.decode(), 'wb') as file:
+        with open('pasta/pasta_' + self.client_name + '/' + file_name.decode(), 'wb') as file:
             ## Laço que recebe os pacotes do arquivo renomeado enviado pelo servidor enquanto houver conteúdo para ler, escrevendo o conteúdo dos pacotes recebidos no novo arquivo criado
             while True:
                 data = self.extract_rec_segment()
@@ -162,41 +164,60 @@ class Client:
                 else:
                     file.write(data) # escreve o conteúdo do pacote recebido no novo arquivo criado
 
-            print(f"Arquivo {file_renamed.decode()} retornado com sucesso!")
+            print(f"Arquivo {file_name.decode()} retornado com sucesso!")
             print(f"Número de pacotes recebidos e reconhecidos: {self.package_number}")
             print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
         return
 
-    # Fecha o socket após o envio e recebimento de todos os arquivos
-    def close(self):
-        self.socket.close()
-
     ## Laço principal para enviar e receber os arquivos
     def run_sender(self):
-        self.create_dir()
+        self.create_dir("pasta_clientes")
         
         while True:
             # ------ THREAD 1 ------
             command = input("Insira o comando: ")
-            self.send(command)
-
+            
             if command == "exit":
+                self.exit = True
                 break
+
+            if not self.login_logout_request:
+                if not self.online:
+                    if command.split()[0] == "login":
+                        self.login_logout_request = True
+                        self.send(command)
+                    else:
+                        print("Tentativa de login inválida.")
+                else:
+                    if command == "logout":
+                        self.login_logout_request = True
+                    
+                    self.send(command)
+            else:
+                print("Aguarde a resposta do comando anterior.")
             # -----------------------
 
     def run_receiver(self):
          while True:
             # ------ THREAD 2 -------
             answer = self.receive()
-            if answer:
-                print(answer)
+            print(answer)
             
-            if answer == "você está online":
-                self.create_dir("pasta")
-            
-            if answer == "você arrematou um item":
-                self.receive(save = True)
-                
+            if self.exit and not self.login_logout_request:
+                break
+
+            match answer:
+                case "você está online":
+                    self.client_name = commando.split()[1]
+                    self.create_dir(self.client_name)
+                    
+                    self.online = True
+                    self.login_logout_request = False
+                case "você está offline":
+                    self.client_name = ""
+
+                    self.online = False
+                    self.login_logout_request = False
             # -----------------------
     
     def run(self):
@@ -208,6 +229,10 @@ class Client:
 
         sender.join()
         receiver.join()
+
+    # Fecha o socket após o envio e recebimento de todos os arquivos
+    def close(self):
+        self.socket.close()
 
 
 """

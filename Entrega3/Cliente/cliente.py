@@ -114,12 +114,12 @@ class Client:
     # Recebe um segmento do servidor e separa o cabeçalho dos dados
     def extract_segment(self):
         msg, _ = self.socket.recvfrom(self.buffer_size)
-        return msg[0], msg[1:]
+        return msg[0], msg[1], msg[2:]
     
     # Recebe um segmento novo do servidor, descartando duplicatas (Stop-and-Wait receptor).
     def extract_rec_segment(self):
         while True:
-            seq_server_number, data = self.extract_segment()
+            seq_server_number, is_file, data = self.extract_segment()
             
             # Caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
             if seq_server_number != self.ack_number and data.decode() != "":
@@ -130,7 +130,7 @@ class Client:
                 
                 # manda o ack respectivo
                 self.send_ack()
-                return data
+                return data, is_file
             
             # reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
             # que o ultimo pacote recebido antes dele

@@ -10,19 +10,8 @@ import threading
 SERVER_NAME = 'localhost' # nome do servidor
 SERVER_PORT = 12001 # porta do servidor
 BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
-HEADER_SIZE = 1 # tamanho do cabeçalho
+HEADER_SIZE = 2 # tamanho do cabeçalho
 PACKET_ERROR_RATE = 0.005 # taxa média de pacotes que serão perdidos ou serão corrompidos
-
-COMMAND_LIST = """
-\033[1;32;43m=-=-=-=-=-=-=-=LISTA DE COMANDOS=-=-=-=-=-=-=-=\033[m
-\033[32mConectar ao sistema - \x1B[3mlogin <nome_do_usuario>\x1B[0m
-\033[32mDar um Lance - \x1B[3mbid <id_item> <valor>\x1B[0m
-\033[32mVer itens e preços - \x1B[3mlist\x1B[0m
-\033[32mVer quem está ganhando - \x1B[3mstatus\x1B[0m
-\033[32mSair do leilão - \x1B[3mlogout\x1B[0m \033[m
-\033[32mSair do sistema - \x1B[3mexit\x1B[0m \033[m
-\033[1;32;43m=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\033[m
-"""
 
 class Client:
     def __init__(self, server_name, server_port, buffer_size, header_size):
@@ -32,8 +21,8 @@ class Client:
         self.header_size = header_size
         
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do cliente
-        self.sequence_number = 0
-        self.ack_number = 1
+        self.sequence_number = 1
+        self.ack_number = 0
         self.data_size = buffer_size - header_size
         self.package_number = 0
         
@@ -45,13 +34,13 @@ class Client:
     # Cria o diretório para armazenar os arquivos
     def create_dir(self, dir_name):
         # Verifica se não existe antes de criar
-        if not os.path.exists(dir_name):
+        if not os.path.exists(f"pasta\{dir_name}"):
             os.makedirs(f"pasta\{dir_name}")
             print(f"'{dir_name}' criada.")
         else:
             print(f"'{dir_name}' já existe.")
 
-        print('O servidor está pronto para receber conexões!')
+        print('Pasta do cliente criada!')
 
     # Cria o segmento a partir do número de sequência (cabeçalho) e os dados
     # Foi implementada uma possível geração de erro no pacote, alternando o bit de sequência
@@ -63,7 +52,7 @@ class Client:
             false_number = (self.sequence_number + 1) % 2
             sequence_number_b = false_number.to_bytes(1)
         
-        return sequence_number_b + data
+        return sequence_number_b +  data
 
     # Foi implementada um possível não envio do pacote, simulando perda no transporte
     def send_segment(self, data):
@@ -118,6 +107,9 @@ class Client:
     # Recebe um segmento do servidor e separa o cabeçalho dos dados
     def extract_segment(self):
         msg, _ = self.socket.recvfrom(self.buffer_size)
+
+        if(len(msg) < 2):
+            return self.extract_segment()
         return msg[0], msg[1], msg[2:]
     
     # Recebe um segmento novo do servidor, descartando duplicatas (Stop-and-Wait receptor).
@@ -126,7 +118,7 @@ class Client:
             seq_server_number, is_file, data = self.extract_segment()
             
             # Caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
-            if seq_server_number != self.ack_number and data.decode() != "":
+            if seq_server_number != self.ack_number and data.decode() != b'':
                 self.ack_number = seq_server_number
                 self.package_number += 1
                 
@@ -138,6 +130,7 @@ class Client:
             # que o ultimo pacote recebido antes dele
             else:
                 print("Pacote esperado não foi recebido, enviando ack...")
+                print("a")
                 
                 self.send_ack()
     
@@ -149,7 +142,7 @@ class Client:
         msg, is_file = self.extract_rec_segment()
 
         if not is_file:
-            return msg
+            return msg.decode()
 
         file_name = msg
         
@@ -185,6 +178,7 @@ class Client:
                 if not self.online:
                     if command.split()[0] == "login":
                         self.login_logout_request = True
+                        self.client_name = command.split()[1]
                         self.send(command)
                     else:
                         print("Tentativa de login inválida.")
@@ -207,8 +201,7 @@ class Client:
                 break
 
             match answer:
-                case "você está online":
-                    self.client_name = commando.split()[1]
+                case "voce esta online":
                     self.create_dir(self.client_name)
                     
                     self.online = True

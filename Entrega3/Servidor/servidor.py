@@ -5,12 +5,35 @@ import socket # importa a biblioteca socket para criar o socket UDP e realizar a
 import os #importa a biblioteca do sistema para criação do diretório para salvamento de arquivos no servidor
 from random import random # importa a função random para geração de perda de pacotes aleatória
 from time import time # importa a função time para temporização de retransmição do pacote (rdt3.0)
+import threading
 
 SERVER_NAME = 'localhost'
 SERVER_PORT = 12001 # porta do servidor
 BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
-HEADER_SIZE = 1 # tamanho do cabeçalho
+HEADER_SIZE = 2 # tamanho do cabeçalho
 PACKET_ERROR_RATE = 0.005 # taxa média de pacotes que serão perdidos ou serão corrompidos
+
+ACCEPT_MSG = "voce esta online"
+
+COMMAND_LIST = """
+\033[1;32;43m=-=-=-=-=-=-=-=LISTA DE COMANDOS=-=-=-=-=-=-=-=\033[m
+\033[32mConectar ao sistema - \x1B[3mlogin <nome_do_usuario>\x1B[0m
+\033[32mDar um Lance - \x1B[3mbid <id_item> <valor>\x1B[0m
+\033[32mVer itens e preços - \x1B[3mlist\x1B[0m
+\033[32mVer quem está ganhando - \x1B[3mstatus\x1B[0m
+\033[32mSair do leilão - \x1B[3mlogout\x1B[0m \033[m
+\033[32mSair do sistema - \x1B[3mexit\x1B[0m \033[m
+\033[1;32;43m=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\033[m
+"""
+
+class Item:
+    def __init__(self, item_id, item_name, top_client, top_val, init_time, counter):
+        self.item_id = item_id
+        self.item_name = item_name
+        self.top_client = top_client
+        self.top_val = top_val
+        self.init_time = init_time
+        self.counter = counter
 
 
 class Server:
@@ -21,10 +44,13 @@ class Server:
         self.header_size = header_size
         
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do cliente
-        self.sequence_number = 0
-        self.ack_number = 1
+        self.sequence_number = 1
+        self.ack_number = 0
         self.data_size = buffer_size - header_size
         self.package_number = 0
+
+        self.client_list = {}
+        self.items_list = {}
 
         self.socket.bind(('', SERVER_PORT)) # vincula o socket à porta definida
         self.create_dir()
@@ -35,7 +61,7 @@ class Server:
 
         # Verifica se não existe antes de criar
         if not os.path.exists(dir_name):
-            os.makedirs(dir_name)
+            os.makedirs(os.path.join("pasta", dir_name))
             print(f"'{dir_name}' criada.")
         else:
             print(f"'{dir_name}' já existe.")
@@ -75,70 +101,55 @@ class Server:
                 self.send_ack(client)
 
     # Recebe um arquivo completo enviado pelo cliente, renomeia, reenvia e salva na pasta local.
-    def receive_file(self):
+    def receive(self):
         self.ack_number = 1
         self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes recebidos
         self.socket.settimeout(None) # Trava o temporizador até receber o próximo pacote
 
         # primeiro pacote contém o nome do arqui
-        file_name, client = self.extract_rec_segment()
-        print(file_name)
-        file_name = file_name.decode()
+        command, client_ip_port = self.extract_rec_segment()
+        command = command.decode()
 
         self.socket.settimeout(10)
-
-        ## Rotina que recebe os pacotes do arquivo enviado pelo cliente e escreve o conteúdo em um novo arquivo
-        with open('pasta/' + file_name, 'wb') as file:
-            ## Laço que recebe os pacotes do arquivo enviado pelo cliente enquanto houver conteúdo para ler, escrevendo o conteúdo dos pacotes no novo arquivo criado
-            while True:
-                data, client = self.extract_rec_segment()
-                print("CLIENTE:", client)
-                
-                if data == b'': # condição que sinaliza o fim do arquivo enviado pelo cliente                    
-                    break
-                else:
-                    file.write(data) # escreve o conteúdo do pacote recebido no novo arquivo criado
-
-            print(f"Número de pacotes recebidos: {self.package_number}")
-            print(f"Arquivo {file_name} recebido com sucesso!")
         
-        return client, file_name
+        return command, client_ip_port
 
     # Cria o segmento a partir do número de sequência (cabeçalho) e os dados
     # Foi implementada uma possível geração de erro no pacote, alternando o bit de sequência
-    def create_segment(self, data):
+    def create_segment(self, data, isFile):
         sequence_number_b = self.sequence_number.to_bytes(1)
+        isfile = isFile.to_bytes(1)
         
         # Condicional para corromper o pacote na taxa média de erro estabelecida
         if (random() < PACKET_ERROR_RATE):
             false_number = (self.sequence_number + 1) % 2
             sequence_number_b = false_number.to_bytes(1)
         
-        return sequence_number_b + data
+        return sequence_number_b + isfile + data.encode()
 
     #Foi implementada um possível não envio do pacote, simulando perda no transporte
-    def send_segment(self, data: str, client):
+    def send_segment(self, data: str, client, isFile):
         # Condicional para perder o pacote na taxa média de erro estabelecida
         if (random() >= PACKET_ERROR_RATE):
-            segment = self.create_segment(data)
+            segment = self.create_segment(data, isFile)
             self.socket.sendto(segment, client)
 
     # Envia um segmento e aguarda o ACK correspondente (Stop-and-Wait).
-    def send_rec_segment(self, data: str, client, timeout):
+    def send_rec_segment(self, data: str, client, timeout, isFile):
         initial_timeout = timeout
         send_time = time() # recebe o tempo atual
-        self.send_segment(data, client)
+        self.send_segment(data, client, isFile)
         
         # Laço que realiza a transmissão e retransmissão conforme rdt3.0
         while True:
             try:
                 self.socket.settimeout(timeout)                   # guarda o timeout inicial
                 ack, _ = self.socket.recvfrom(self.buffer_size)   # registra o tempo da primeira tentativa de envio   
-                ack_number = ack[0]
+                ack_number, data_server = ack[0], ack[1:]
                 
                 # verifica se o ack recebido é o ack esperado
-                if ack_number == self.sequence_number:                      
+                if ack_number == self.sequence_number and data_server == b'':                      
                     self.sequence_number = (self.sequence_number + 1) % 2   # troca para o próximo num de sequencia esperada
                     self.package_number += 1
                     break
@@ -158,39 +169,103 @@ class Server:
                 print(f"Timeout! Retransmitindo o pacote {self.package_number + 1}") # o primeiro pacote começa com 1
                 timeout = initial_timeout                                               
                 send_time = time()                                         
-                self.send_segment(data, client)
+                self.send_segment(data, client, isFile)
 
 
     # Envia um arquivo renomeado de volta ao cliente em múltiplos pacotes.
-    def send_file(self, client, fileName):
+    def send_file(self, data, client_ip_port, isFile):
         self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes enviados
 
-        ## Rotina que abre o arquivo para leitura em modo binário, renomea-o e envia-o em pacotes para o cliente
-        with open('pasta/' + fileName, 'rb') as file:
-            file_renamed = 'leilao_' + fileName ## tratamento para enviar o arquivo renomeado para o cliente
+        if isFile:
+            ## Rotina que abre o arquivo para leitura em modo binário, renomea-o e envia-o em pacotes para o cliente
+            with open('pasta/' + data + 'txt', 'rb') as file:
+                file_name = data + '.txt'
 
-            self.send_rec_segment(file_renamed.encode(), client, .1)
+                self.send_rec_segment(file_name.encode(), client_ip_port, .1, isFile)
 
-            package = file.read(self.data_size) # lê o conteúdo do arquivo em pacotes do tamanho do buffer
+                package = file.read(self.data_size) # lê o conteúdo do arquivo em pacotes do tamanho do buffer
 
-            ## Laço que envia os pacotes do arquivo para o cliente enquanto houver conteúdo para ler
-            while package:
-                self.send_rec_segment(package, client, .1) # envia o pacote para o cliente
-                package = file.read(self.data_size) # lê o próximo pacote do arquivo até o final do arquivo
+                ## Laço que envia os pacotes do arquivo para o cliente enquanto houver conteúdo para ler
+                while package:
+                    self.send_rec_segment(package, client_ip_port, .1, isFile) # envia o pacote para o cliente
+                    package = file.read(self.data_size) # lê o próximo pacote do arquivo até o final do arquivo
 
-            self.send_rec_segment(b'', client, .1) # envia o caractere null para sinalizar o cliente do fim do arquivo
+                self.send_rec_segment(b'', client_ip_port, .1, isFile) # envia o caractere null para sinalizar o cliente do fim do arquivo
 
-            print(f"Arquivo {file_renamed} retornado com sucesso!")
-            print(f"Número de pacotes enviados: {self.package_number}")
-            print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-    
-    # Executa o loop principal do servidor, processando arquivos indefinidamente
+                print(f"Arquivo {file_name} retornado com sucesso!")
+                print(f"Número de pacotes enviados: {self.package_number}")
+                print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+        else:
+            for i in range(0, len(data), self.data_size):
+                package = data[i:i+self.data_size]
+                self.send_rec_segment(package, client_ip_port, .1, isFile) # envia o pacote para o cliente
+
+    '''def run_sender(self):
+        while True:
+            # ------ THREAD 1 ------
+            
+            if command == "exit":
+                self.exit = True
+                break
+
+            if not self.login_logout_request:
+                if not self.online:
+                    if command.split()[0] == "login":
+                        self.login_logout_request = True
+                        self.send(command)
+                    else:
+                        print("Tentativa de login inválida.")
+                else:
+                    if command == "logout":
+                        self.login_logout_request = True
+                    
+                    self.send(command)
+            else:
+                print("Aguarde a resposta do comando anterior.")
+            # -----------------------'''
+
     def run(self):
         while True:
-            client, file_name = self.receive_file()
-            self.send_file(client, file_name)
+            # ------ THREAD 2 -------
+            command, client_ip_port = self.receive()
+            print(command)
+            
+            match command.split()[0]:
+                case "help":
+                    self.send_file(COMMAND_LIST, client_ip_port, False)
+                case "login":
+                    client_name = command.split()[1]
+                    if client_name not in self.client_list.values():
+                        self.client_list[client_ip_port] = client_name
+                        print(f"Usuário \x1B[3m{client_name}\x1B[0m conectado!")
+                        self.send_file(ACCEPT_MSG, client_ip_port, False)
+                    else:
+                        print(f"Usuário \x1B[3m{client_name}\x1B[0m já existente!")
+                case "bid":
+                    print(f"Usuário fez o lance no item {command.split()[1]} com valor R${command.split()[2]}")
+                    print("Usuário não conseguiu fazer o lance")
+                case "list":
+                    
+                #case "status":
+                    
+                #case "logout":
+                #    print(f"Usuário \x1B[3m{self.client_list[client_ip_port]}\x1B[0m não conectado!")
+                #    print("Desfazendo a conexão...")
+                ##case _:
+                    print("Comando desconhecido (digite \x1B[3mhelp\x1B[0m para ver lista de comandos)")
+            # -----------------------
+
+    # Executa o loop principal do servidor, processando arquivos indefinidamente
+    def main(self):
+        #sender = threading.Thread(target = self.run_sender)
+        run = threading.Thread(target = self.run)
+
+        
+        run.start()
+
+        run.join()
 
 
 server = Server(SERVER_NAME, SERVER_PORT, BUFFER_SIZE, HEADER_SIZE)
-server.run()
+server.main()

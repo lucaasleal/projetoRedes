@@ -44,8 +44,8 @@ class Server:
         self.header_size = header_size
         
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do cliente
-        self.sequence_number = 1
-        self.ack_number = 0
+        self.sequence_number = 0
+        self.ack_number = 1
         self.data_size = buffer_size - header_size
         self.package_number = 0
 
@@ -56,42 +56,42 @@ class Server:
         self.create_dir()
     
     # Cria o diretório para armazenar os arquivos
-    def create_dir(self):
-        dir_name = "pasta"
-
+    def create_dir(self, dir_name = "pasta"):
         # Verifica se não existe antes de criar
         if not os.path.exists(dir_name):
-            os.makedirs(os.path.join("pasta", dir_name))
-            print(f"'{dir_name}' criada.")
+            os.makedirs(dir_name)
+            print(f"Pasta criada.")
         else:
-            print(f"'{dir_name}' já existe.")
+            print(f"Pasta já existe.")
 
         print('O servidor está pronto para receber conexões!')
     
     # Envia um ACK ao cliente confirmando o recebimento do último pacote.      
-    def send_ack(self, client):  
+    def send_ack(self, client):
         self.socket.sendto(self.ack_number.to_bytes(1), client)
 
     # Recebe um segmento do cliente e separa o cabeçalho dos dados.
     def extract_segment(self):
         msg, client = self.socket.recvfrom(self.buffer_size)
+        
         return msg[0], msg[1:], client
 
-    # Gerenciamento do recebimento e o envio da confirmação 
+    # Gerenciamento do recebimento e o envio da confirmação
     def extract_rec_segment(self):
         while True:
             sequence_number, data, client = self.extract_segment()
 
             # Caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
             if sequence_number != self.ack_number:
-                self.ack_number = sequence_number
+                self.ack_number = (self.ack_number + 1) % 2
                 self.package_number += 1
                 
                 print(f"Pacote {self.package_number} recebido corretamente")
 
                 # manda o ack respectivo
                 self.send_ack(client)
-                return data, client
+                
+                return data.decode(), client
             
             # Reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
             # que o ultimo pacote recebido antes dele
@@ -102,14 +102,11 @@ class Server:
 
     # Recebe um arquivo completo enviado pelo cliente, renomeia, reenvia e salva na pasta local.
     def receive(self):
-        self.ack_number = 1
-        self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes recebidos
         self.socket.settimeout(None) # Trava o temporizador até receber o próximo pacote
 
         # primeiro pacote contém o nome do arqui
         command, client_ip_port = self.extract_rec_segment()
-        command = command.decode()
 
         self.socket.settimeout(10)
         
@@ -174,7 +171,6 @@ class Server:
 
     # Envia um arquivo renomeado de volta ao cliente em múltiplos pacotes.
     def send_file(self, data, client_ip_port, isFile):
-        self.sequence_number = 0
         self.package_number = 0 # reseta o contador de pacotes enviados
 
         if isFile:
@@ -182,7 +178,7 @@ class Server:
             with open('pasta/' + data + 'txt', 'rb') as file:
                 file_name = data + '.txt'
 
-                self.send_rec_segment(file_name.encode(), client_ip_port, .1, isFile)
+                self.send_rec_segment(file_name, client_ip_port, .1, isFile)
 
                 package = file.read(self.data_size) # lê o conteúdo do arquivo em pacotes do tamanho do buffer
 

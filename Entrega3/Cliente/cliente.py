@@ -21,8 +21,8 @@ class Client:
         self.header_size = header_size
         
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do cliente
-        self.sequence_number = 1
-        self.ack_number = 0
+        self.sequence_number = 0
+        self.ack_number = 1
         self.data_size = buffer_size - header_size
         self.package_number = 0
         
@@ -34,13 +34,13 @@ class Client:
     # Cria o diretório para armazenar os arquivos
     def create_dir(self, dir_name):
         # Verifica se não existe antes de criar
-        if not os.path.exists(f"pasta\{dir_name}"):
-            os.makedirs(f"pasta\{dir_name}")
-            print(f"'{dir_name}' criada.")
+        if not os.path.exists(f"pasta_{dir_name}"):
+            os.makedirs(f"pasta_{dir_name}")
+            print("Pasta criada.")
         else:
-            print(f"'{dir_name}' já existe.")
+            print("Pasta já existe.")
 
-        print('Pasta do cliente criada!')
+        print(f"Cliente {dir_name} está pronto para estabelecer conexões!")
 
     # Cria o segmento a partir do número de sequência (cabeçalho) e os dados
     # Foi implementada uma possível geração de erro no pacote, alternando o bit de sequência
@@ -52,7 +52,7 @@ class Client:
             false_number = (self.sequence_number + 1) % 2
             sequence_number_b = false_number.to_bytes(1)
         
-        return sequence_number_b +  data
+        return sequence_number_b + data
 
     # Foi implementada um possível não envio do pacote, simulando perda no transporte
     def send_segment(self, data):
@@ -106,11 +106,11 @@ class Client:
     
     # Recebe um segmento do servidor e separa o cabeçalho dos dados
     def extract_segment(self):
-        msg, _ = self.socket.recvfrom(self.buffer_size)
+        while True:
+            msg, _ = self.socket.recvfrom(self.buffer_size)
 
-        if(len(msg) < 2):
-            return self.extract_segment()
-        return msg[0], msg[1], msg[2:]
+            if len(msg) >= 2:
+                return msg[0], msg[1], msg[2:]
     
     # Recebe um segmento novo do servidor, descartando duplicatas (Stop-and-Wait receptor).
     def extract_rec_segment(self):
@@ -119,12 +119,12 @@ class Client:
             
             # Caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
             if seq_server_number != self.ack_number and data.decode() != b'':
-                self.ack_number = seq_server_number
+                self.ack_number = (self.ack_number + 1) % 2
                 self.package_number += 1
                 
                 print(f"Pacote {self.package_number} recebido corretamente")
                 
-                return data, is_file
+                return data.decode(), is_file
             
             # reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
             # que o ultimo pacote recebido antes dele
@@ -142,12 +142,12 @@ class Client:
         msg, is_file = self.extract_rec_segment()
 
         if not is_file:
-            return msg.decode()
+            return msg
 
         file_name = msg
         
         ## Rotina que recebe os pacotes do arquivo renomeado enviado pelo servidor e escreve o conteúdo em um novo arquivo (com nome novo)
-        with open('pasta/pasta_' + self.client_name + '/' + file_name.decode(), 'wb') as file:
+        with open('pasta/pasta_' + self.client_name + '/' + file_name, 'wb') as file:
             ## Laço que recebe os pacotes do arquivo renomeado enviado pelo servidor enquanto houver conteúdo para ler, escrevendo o conteúdo dos pacotes recebidos no novo arquivo criado
             while True:
                 data = self.extract_rec_segment()
@@ -157,15 +157,13 @@ class Client:
                 else:
                     file.write(data) # escreve o conteúdo do pacote recebido no novo arquivo criado
 
-            print(f"Arquivo {file_name.decode()} retornado com sucesso!")
+            print(f"Arquivo {file_name} retornado com sucesso!")
             print(f"Número de pacotes recebidos e reconhecidos: {self.package_number}")
             print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
         return
 
     ## Laço principal para enviar e receber os arquivos
     def run_sender(self):
-        self.create_dir("pasta_clientes")
-        
         while True:
             # ------ THREAD 1 ------
             command = input("Insira o comando: ")
@@ -195,7 +193,7 @@ class Client:
          while True:
             # ------ THREAD 2 -------
             answer = self.receive()
-            print(answer)
+            print(f"server mandou: {answer}\n")
             
             if self.exit and not self.login_logout_request:
                 break

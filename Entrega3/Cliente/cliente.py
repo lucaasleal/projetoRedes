@@ -118,11 +118,12 @@ class Client:
             seq_server_number, is_file, data = self.extract_segment()
             
             # Caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
-            if seq_server_number != self.ack_number and data.decode() != b'':
+            if seq_server_number != self.ack_number:
                 self.ack_number = (self.ack_number + 1) % 2
                 self.package_number += 1
                 
                 print(f"Pacote {self.package_number} recebido corretamente")
+                self.send_ack()
                 
                 return data.decode(), is_file
             
@@ -130,14 +131,13 @@ class Client:
             # que o ultimo pacote recebido antes dele
             else:
                 print("Pacote esperado não foi recebido, enviando ack...")
-                print("a")
                 
                 self.send_ack()
     
     # Recebe um arquivo completo enviado pelo servidor e salva na pasta local.
     def receive(self):
         self.package_number = 0 # reseta o contador de pacotes recebidos
-        self.socket.settimeout(100)
+        self.socket.settimeout(10)
 
         msg, is_file = self.extract_rec_segment()
 
@@ -177,10 +177,14 @@ class Client:
                     if command.split()[0] == "login":
                         self.login_logout_request = True
                         self.client_name = command.split()[1]
-                        self.send(command)
+                        self.send(command) 
                     else:
                         print("Tentativa de login inválida.")
                 else:
+                    if "login" in command:
+                        print("Usuário já conectado.")
+                        continue
+
                     if command == "logout":
                         self.login_logout_request = True
                     
@@ -192,7 +196,11 @@ class Client:
     def run_receiver(self):
          while True:
             # ------ THREAD 2 -------
-            answer = self.receive()
+            try:
+                answer = self.receive()
+            except socket.timeout:
+                continue
+
             print(f"server mandou: {answer}\n")
             
             if self.exit and not self.login_logout_request:
@@ -204,7 +212,7 @@ class Client:
                     
                     self.online = True
                     self.login_logout_request = False
-                case "você está offline":
+                case "voce esta offline":
                     self.client_name = ""
 
                     self.online = False

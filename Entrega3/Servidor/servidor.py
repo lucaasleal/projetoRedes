@@ -146,7 +146,7 @@ class Server:
                 ack_number, data_server = ack[0], ack[1:]
                 
                 # verifica se o ack recebido é o ack esperado
-                if ack_number == self.sequence_number and data_server == b'':                      
+                if ack_number == self.sequence_number and data_server.decode() == '':                      
                     self.sequence_number = (self.sequence_number + 1) % 2   # troca para o próximo num de sequencia esperada
                     self.package_number += 1
                     break
@@ -170,7 +170,7 @@ class Server:
 
 
     # Envia um arquivo renomeado de volta ao cliente em múltiplos pacotes.
-    def send_file(self, data, client_ip_port, isFile):
+    def send(self, data, client_ip_port, isFile):
         self.package_number = 0 # reseta o contador de pacotes enviados
 
         if isFile:
@@ -229,26 +229,27 @@ class Server:
             
             match command.split()[0]:
                 case "help":
-                    self.send_file(COMMAND_LIST, client_ip_port, False)
+                    self.send(COMMAND_LIST, client_ip_port, False)
                 case "login":
                     client_name = command.split()[1]
                     if client_name not in self.client_list.values():
                         self.client_list[client_ip_port] = client_name
                         print(f"Usuário \x1B[3m{client_name}\x1B[0m conectado!")
-                        self.send_file(ACCEPT_MSG, client_ip_port, False)
+                        self.send(ACCEPT_MSG, client_ip_port, False)
                     else:
                         print(f"Usuário \x1B[3m{client_name}\x1B[0m já existente!")
                 case "bid":
                     print(f"Usuário fez o lance no item {command.split()[1]} com valor R${command.split()[2]}")
                     print("Usuário não conseguiu fazer o lance")
-                case "list":
+                #case "list":
                     
                 #case "status":
                     
-                #case "logout":
-                #    print(f"Usuário \x1B[3m{self.client_list[client_ip_port]}\x1B[0m não conectado!")
-                #    print("Desfazendo a conexão...")
-                ##case _:
+                case "logout":
+                    print("Desfazendo a conexão...")
+                    self.send("voce esta offline", client_ip_port, False)
+                    self.client_list.pop(client_ip_port)
+                case _:
                     print("Comando desconhecido (digite \x1B[3mhelp\x1B[0m para ver lista de comandos)")
             # -----------------------
 

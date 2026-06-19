@@ -31,6 +31,8 @@ class Client:
         self.login_logout_request = False
         self.exit = False
 
+        self.ack_correct = False
+
     # Cria o diretório para armazenar os arquivos
     def create_dir(self, dir_name):
         # Verifica se não existe antes de criar
@@ -69,30 +71,14 @@ class Client:
         
         # Laço que realiza a transmissão e retransmissão conforme rdt3.0
         while True:
-            try:
-                self.socket.settimeout(timeout)                  # guarda o timeout inicial
-                ack, _ = self.socket.recvfrom(self.buffer_size)  # registra o tempo da primeira tentativa de envio   
-                ack_number, data_server = ack[0], ack[1:]
-                
-                # Condicional para verificar se o ack recebido é o ack esperado
-                if ack_number == self.sequence_number and data_server.decode() == "":
-                    self.sequence_number = (self.sequence_number + 1) % 2   # troca para o próximo num de sequencia esperada
-                    self.package_number += 1
-                    
-                    break
-                else:
-                    elapsed_time = time() - send_time                                   # calcula o tempo desde a primeira tentativa
-                    timeout = initial_timeout - elapsed_time                            # calcula o tempo restante para receber o ack esperado
-                    print(f"ACK errado recebido, tempo restante de timeout: {timeout}") # foi feita essa implementação porque o recvfrom recebe qualquer ack
-                                                                                        # seja ele o correto ou não
-                    # gera uma exceção se o timeout se esgotar
-                    if timeout <= 0:
-                        raise socket.timeout
-
-            # Em caso de exceção de tempo, retransmite o pacote e reinicia todo o processo
-            except socket.timeout:
-                print(f"Timeout! Retransmitindo o pacote {self.package_number + 1}") # o primeiro pacote começa com 1
-                timeout = initial_timeout
+            if self.ack_correct:
+                self.sequence_number = (self.sequence_number+1) % 2
+                self.package_number += 1
+                self.ack_correct = False
+                break
+            elif time() - send_time >= timeout:
+                print(f"Timeout! Retransmitindo o pacote {self.package_number + 1}")
+                send_time = time()
                 self.send_segment(data)
 
     # Método geral para transmissão e retransmissão de pacotes utilizando rdt3.0
@@ -106,42 +92,47 @@ class Client:
     
     # Recebe um segmento do servidor e separa o cabeçalho dos dados
     def extract_segment(self):
-        while True:
-            msg, _ = self.socket.recvfrom(self.buffer_size)
+        msg, _ = self.socket.recvfrom(self.buffer_size)
+        return msg
 
-            if len(msg) >= 2:
-                return msg[0], msg[1], msg[2:]
-    
     # Recebe um segmento novo do servidor, descartando duplicatas (Stop-and-Wait receptor).
     def extract_rec_segment(self):
         while True:
-            seq_server_number, is_file, data = self.extract_segment()
+            msg = self.extract_segment()
             
             # Caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
-            if seq_server_number != self.ack_number:
-                self.ack_number = (self.ack_number + 1) % 2
-                self.package_number += 1
+            if len(msg)>2:
+                seq_server_number, isFile, data = msg[0], msg[1], msg[2:]
                 
-                print(f"Pacote {self.package_number} recebido corretamente")
-                self.send_ack()
-                
-                return data.decode(), is_file
+                if seq_server_number != self.ack_number:
+                    self.ack_number = (self.ack_number + 1) % 2
+                    self.package_number += 1
+
+                    print(f"Pacote {self.package_number} recebido corretamente")
+                    self.send_ack()
+
+                    return data.decode(), isFile
             
-            # reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
-            # que o ultimo pacote recebido antes dele
+                # reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
+                # que o ultimo pacote recebido antes dele
+                else:
+                    print("Pacote esperado não foi recebido, enviando ack...")
+                    
+                    self.send_ack()
             else:
-                print("Pacote esperado não foi recebido, enviando ack...")
-                
-                self.send_ack()
+                ack_number = msg[0]
+
+                if ack_number == self.sequence_number:
+                    self.ack_correct = True
     
     # Recebe um arquivo completo enviado pelo servidor e salva na pasta local.
     def receive(self):
         self.package_number = 0 # reseta o contador de pacotes recebidos
-        self.socket.settimeout(10)
+        self.socket.settimeout(1)
 
-        msg, is_file = self.extract_rec_segment()
+        msg, isFile = self.extract_rec_segment()
 
-        if not is_file:
+        if not isFile:
             return msg
 
         file_name = msg
@@ -170,6 +161,7 @@ class Client:
             
             if command == "exit":
                 self.exit = True
+                print("Saindo do sistema...")
                 break
 
             if not self.login_logout_request:

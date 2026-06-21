@@ -13,8 +13,6 @@ BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
 HEADER_SIZE = 2 # tamanho do cabeçalho
 PACKET_ERROR_RATE = 0.005 # taxa média de pacotes que serão perdidos ou serão corrompidos
 
-ACCEPT_MSG = "voce esta online"
-
 COMMAND_LIST = """
 \033[1;32;43m=-=-=-=-=-=-=-=LISTA DE COMANDOS=-=-=-=-=-=-=-=\033[m
 \033[32mConectar ao sistema - \x1B[3mlogin <nome_do_usuario>\x1B[0m
@@ -26,15 +24,17 @@ COMMAND_LIST = """
 \033[1;32;43m=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\033[m
 """
 
-class Item:
-    def __init__(self, item_id, item_name, top_client, top_val, init_time, counter):
-        self.item_id = item_id
-        self.item_name = item_name
-        self.top_client = top_client
-        self.top_val = top_val
-        self.init_time = init_time
-        self.counter = counter
+items_name = ["caderno", "carro", "celular", "computador", "geladeira"]
 
+class Item:
+    def __init__(self, id, name, highest_bidder, top_val, counter, ip_port, timeout):
+        self.id = id
+        self.name = name
+        self.highest_bidder = highest_bidder
+        self.top_val = 0
+        self.counter = 0
+        self.destiny = ip_port
+        self.timeout = timeout 
 
 class Server:
     def __init__(self, server_name, server_port, buffer_size, header_size):
@@ -54,7 +54,21 @@ class Server:
 
         self.socket.bind(('', SERVER_PORT)) # vincula o socket à porta definida
         self.create_dir()
-    
+        self.create_items_list()
+
+        self.send_buffer = []
+
+        self.ack_correct = False
+
+
+    def create_items_list(self):
+        index = 0
+        for i in items_name:
+            item = Item(index, i, None, None, 0, None, time() + 60)
+            self.items_list[index] = item
+            index += 1
+
+
     # Cria o diretório para armazenar os arquivos
     def create_dir(self, dir_name = "pasta"):
         # Verifica se não existe antes de criar
@@ -66,39 +80,45 @@ class Server:
 
         print('O servidor está pronto para receber conexões!')
     
+
     # Envia um ACK ao cliente confirmando o recebimento do último pacote.      
     def send_ack(self, client):
         self.socket.sendto(self.ack_number.to_bytes(1), client)
 
+
     # Recebe um segmento do cliente e separa o cabeçalho dos dados.
     def extract_segment(self):
         msg, client = self.socket.recvfrom(self.buffer_size)
-        
-        return msg[0], msg[1:], client
+        return msg, client
+
 
     # Gerenciamento do recebimento e o envio da confirmação
     def extract_rec_segment(self):
         while True:
-            sequence_number, data, client = self.extract_segment()
+            msg, client = self.extract_segment()
 
-            # Caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
-            if sequence_number != self.ack_number:
-                self.ack_number = (self.ack_number + 1) % 2
-                self.package_number += 1
-                
-                print(f"Pacote {self.package_number} recebido corretamente")
+            if len(msg) > 1:
+                sequence_number, data = msg[0], msg[1:]
 
-                # manda o ack respectivo
-                self.send_ack(client)
+                if sequence_number != self.ack_number:
+                    self.ack_number = (self.ack_number + 1) % 2
+                    self.package_number += 1
                 
-                return data.decode(), client
-            
-            # Reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
-            # que o ultimo pacote recebido antes dele
+                    print(f"Pacote {self.package_number} recebido corretamente")
+                    self.send_ack(client)
+                    
+                    return data.decode(), client
+                
+                # Reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
+                # que o ultimo pacote recebido antes dele
+                else:
+                    print("Pacote esperado não foi recebido, enviando ack...")
+                    self.send_ack(client)
             else:
-                print("Pacote esperado não foi recebido, enviando ack...")
+                ack_number = msg[0]
+                if ack_number == self.sequence_number:
+                    self.ack_correct = True
 
-                self.send_ack(client)
 
     # Recebe um arquivo completo enviado pelo cliente, renomeia, reenvia e salva na pasta local.
     def receive(self):
@@ -112,6 +132,7 @@ class Server:
         
         return command, client_ip_port
 
+
     # Cria o segmento a partir do número de sequência (cabeçalho) e os dados
     # Foi implementada uma possível geração de erro no pacote, alternando o bit de sequência
     def create_segment(self, data, isFile):
@@ -122,8 +143,12 @@ class Server:
         if (random() < PACKET_ERROR_RATE):
             false_number = (self.sequence_number + 1) % 2
             sequence_number_b = false_number.to_bytes(1)
-        
-        return sequence_number_b + isfile + data.encode()
+        print("DATA QUE VAI ENCODE: ", data)
+
+        if isinstance(data, str):
+            data = data.encode()
+        return sequence_number_b + isfile + data
+
 
     #Foi implementada um possível não envio do pacote, simulando perda no transporte
     def send_segment(self, data: str, client, isFile):
@@ -132,50 +157,30 @@ class Server:
             segment = self.create_segment(data, isFile)
             self.socket.sendto(segment, client)
 
+
     # Envia um segmento e aguarda o ACK correspondente (Stop-and-Wait).
     def send_rec_segment(self, data: str, client, timeout, isFile):
-        initial_timeout = timeout
         send_time = time() # recebe o tempo atual
         self.send_segment(data, client, isFile)
-        
-        # Laço que realiza a transmissão e retransmissão conforme rdt3.0
-        while True:
-            try:
-                self.socket.settimeout(timeout)                   # guarda o timeout inicial
-                ack, _ = self.socket.recvfrom(self.buffer_size)   # registra o tempo da primeira tentativa de envio   
-                ack_number, data_server = ack[0], ack[1:]
-                
-                # verifica se o ack recebido é o ack esperado
-                if ack_number == self.sequence_number and data_server.decode() == '':                      
-                    self.sequence_number = (self.sequence_number + 1) % 2   # troca para o próximo num de sequencia esperada
-                    self.package_number += 1
-                    break
-                
-                # caso o ack não for o esperado
-                else:
-                    elapsed_time = time() - send_time                                     # calcula o tempo desde a primeira tentativa
-                    timeout = initial_timeout - elapsed_time                              # calcula o tempo restante para receber o ack esperado
-                    print(f"ACK errado recebido, tempo restante de timeout: {timeout}")   # foi feita essa implementação porque o recvfrom recebe qualquer ack
-                                                                                          # seja ele o correto ou não
-                    # gera uma exceção se o timeout se esgotar
-                    if timeout <= 0:
-                        raise socket.timeout
-            
-            # envia o pacote novamente, reiniciando todo o processo
-            except socket.timeout:                                                     
-                print(f"Timeout! Retransmitindo o pacote {self.package_number + 1}") # o primeiro pacote começa com 1
-                timeout = initial_timeout                                               
-                send_time = time()                                         
-                self.send_segment(data, client, isFile)
 
+        while True:
+            if self.ack_correct:
+                self.sequence_number = (self.sequence_number+1) % 2
+                self.package_number += 1
+                self.ack_correct = False
+                break
+            elif time() - send_time >= timeout:
+                print(f"Timeout! Retransmitindo o pacote {self.package_number + 1}")
+                send_time = time()
+                self.send_segment(data, client, isFile)
+                
 
     # Envia um arquivo renomeado de volta ao cliente em múltiplos pacotes.
     def send(self, data, client_ip_port, isFile):
         self.package_number = 0 # reseta o contador de pacotes enviados
 
         if isFile:
-            ## Rotina que abre o arquivo para leitura em modo binário, renomea-o e envia-o em pacotes para o cliente
-            with open('pasta/' + data + 'txt', 'rb') as file:
+             with open('pasta/' + data + '.txt', 'rb') as file:
                 file_name = data + '.txt'
 
                 self.send_rec_segment(file_name, client_ip_port, .1, isFile)
@@ -187,7 +192,7 @@ class Server:
                     self.send_rec_segment(package, client_ip_port, .1, isFile) # envia o pacote para o cliente
                     package = file.read(self.data_size) # lê o próximo pacote do arquivo até o final do arquivo
 
-                self.send_rec_segment(b'', client_ip_port, .1, isFile) # envia o caractere null para sinalizar o cliente do fim do arquivo
+                self.send_rec_segment('EOF', client_ip_port, .1, isFile) # envia o caractere null para sinalizar o cliente do fim do arquivo
 
                 print(f"Arquivo {file_name} retornado com sucesso!")
                 print(f"Número de pacotes enviados: {self.package_number}")
@@ -197,71 +202,126 @@ class Server:
                 package = data[i:i+self.data_size]
                 self.send_rec_segment(package, client_ip_port, .1, isFile) # envia o pacote para o cliente
 
-    '''def run_sender(self):
+    def sender(self):
         while True:
-            # ------ THREAD 1 ------
-            
-            if command == "exit":
-                self.exit = True
-                break
-
-            if not self.login_logout_request:
-                if not self.online:
-                    if command.split()[0] == "login":
-                        self.login_logout_request = True
-                        self.send(command)
-                    else:
-                        print("Tentativa de login inválida.")
-                else:
-                    if command == "logout":
-                        self.login_logout_request = True
-                    
-                    self.send(command)
+            if self.send_buffer:
+                print(self.send_buffer[0])
+                data, client_ip_port, isFile = self.send_buffer.pop(0)
+                self.send(data, client_ip_port, isFile)
             else:
-                print("Aguarde a resposta do comando anterior.")
-            # -----------------------'''
+                continue
 
-    def run(self):
+    def receiver(self):
         while True:
             # ------ THREAD 2 -------
-            command, client_ip_port = self.receive()
+            try:
+                 command, client_ip_port = self.receive()
+            except socket.timeout:
+                continue
+           
             print(command)
             
             match command.split()[0]:
                 case "help":
-                    self.send(COMMAND_LIST, client_ip_port, False)
+                    self.send_buffer.append((COMMAND_LIST, client_ip_port, False))
+                    #self.send(COMMAND_LIST, client_ip_port, False)
                 case "login":
                     client_name = command.split()[1]
+
                     if client_name not in self.client_list.values():
                         self.client_list[client_ip_port] = client_name
+                        
                         print(f"Usuário \x1B[3m{client_name}\x1B[0m conectado!")
-                        self.send(ACCEPT_MSG, client_ip_port, False)
+                        self.send_buffer.append(('voce esta online', client_ip_port, False))
                     else:
                         print(f"Usuário \x1B[3m{client_name}\x1B[0m já existente!")
+                        
+                        
                 case "bid":
-                    print(f"Usuário fez o lance no item {command.split()[1]} com valor R${command.split()[2]}")
-                    print("Usuário não conseguiu fazer o lance")
-                #case "list":
+                    print(f"{self.client_list[client_ip_port]} fez o lance no item {command.split()[1]} com valor R${command.split()[2]}")
+                    _, item_id, value = command.split()
+                    if (item_id == '' or value == ''):
+                        print("Bid incompleto! (Formato inválido)")
+                        continue
+
+                    item_id = int(item_id)
+                    value = int(value)
+
+                    print(self.items_list)
+                    print(self.client_list)
+
+                    if item_id in self.items_list:
+                        item = self.items_list[item_id]
+                        value_now = item.top_val
+                        if (value > value_now):
+                            item.counter += 1
+                            item.top_val = value
+                            item.highest_bidder = self.client_list[client_ip_port]
+                            item.destiny = client_ip_port
+                            self.send_buffer.append(("Lance dado com sucesso!", client_ip_port, False))
+
+                            for client in self.client_list:
+                                print(client)
+                                if client != client_ip_port:
+                                    bid = 'Lance de' + (float)(item.value) +  'R$ dado para o' + item.name + ', por ' + item.higgest_bidder + '\n'
+                                    self.send_buffer.append((bid, client, False))
+                        else:
+                            self.send_buffer.append(("Lance invalido, arranje mais dinheiro", client_ip_port, False))
+                    else:
+                        self.send_buffer.append(("O item especificado não está em leilão", client_ip_port, False))
+                
                     
-                #case "status":
+                case "list":
+                    list = 'Id_item  |  Item_name  |  valor  \n'
+                    for item_id in self.items_list:
+                        item = self.items_list[item_id]
+                        list += str(item.id) + '  |  ' + item.name + '  |  ' + str(item.top_val) + '\n'
+
+                    self.send_buffer.append((list, client_ip_port, False))
+                    
+                case "status":
+                    ranking = "Id_item  |  Item_name  |  maior_lance  |  valor_lance  \n"
+                    for item_id in self.items_list:
+                        item = self.items_list[item_id]
+                        ranking += str(item.id) + '  |  ' + item.name + '  |  ' + str(item.highest_bidder) + '  |  ' + str(item.top_val) + '\n'
+                    
+                    self.send_buffer.append((ranking, client_ip_port, False))
                     
                 case "logout":
                     print("Desfazendo a conexão...")
-                    self.send("voce esta offline", client_ip_port, False)
+                    self.send_buffer.append(("voce esta offline", client_ip_port, False))
                     self.client_list.pop(client_ip_port)
+                    
                 case _:
                     print("Comando desconhecido (digite \x1B[3mhelp\x1B[0m para ver lista de comandos)")
-            # -----------------------
+                    
+    
+    def advertisement(self):
+        while True:
+            id_removed = -1
+            for item_id in self.items_list:
+                item = self.items_list[item_id]
+                if ((item.counter == 5 or time() >= item.timeout) and item.destiny is not None): #OU TIMER
+                    self.send_buffer.append((item.name, item.destiny, True))
+                    id_removed = item_id
+
+            if(id_removed != -1):
+                self.items_list.pop(id_removed)   
+
 
     # Executa o loop principal do servidor, processando arquivos indefinidamente
     def main(self):
-        #sender = threading.Thread(target = self.run_sender)
-        run = threading.Thread(target = self.run)
+        sender = threading.Thread(target = self.sender)
+        run = threading.Thread(target = self.receiver)
+        advertisement = threading.Thread(target = self.advertisement)
 
-        
+        sender.start()
         run.start()
+        advertisement.start()
 
+        sender.join()
         run.join()
+        advertisement.join()
 
 
 server = Server(SERVER_NAME, SERVER_PORT, BUFFER_SIZE, HEADER_SIZE)

@@ -25,7 +25,7 @@ class Client:
         self.ack_number = 1
         self.data_size = buffer_size - header_size
         self.package_number = 0
-        
+
         self.client_name = ""
         self.online = False
         self.login_logout_request = False
@@ -65,7 +65,6 @@ class Client:
     
     # Envia um segmento e aguarda o ACK correspondente (Stop-and-Wait).
     def send_rec_segment(self, data, timeout):
-        initial_timeout = timeout   # i guarda o timeout inicial
         send_time = time() # recebe o tempo atual
         self.send_segment(data)
         
@@ -101,7 +100,7 @@ class Client:
             msg = self.extract_segment()
             
             # Caso o ack seja esperado, ou seja, diferente do pacote recebido anteriormente
-            if len(msg)>2:
+            if len(msg) > 2:
                 seq_server_number, isFile, data = msg[0], msg[1], msg[2:]
                 
                 if seq_server_number != self.ack_number:
@@ -120,6 +119,7 @@ class Client:
                     
                     self.send_ack()
             else:
+
                 ack_number = msg[0]
 
                 if ack_number == self.sequence_number:
@@ -138,15 +138,13 @@ class Client:
         file_name = msg
         
         ## Rotina que recebe os pacotes do arquivo renomeado enviado pelo servidor e escreve o conteúdo em um novo arquivo (com nome novo)
-        with open('pasta/pasta_' + self.client_name + '/' + file_name, 'wb') as file:
+        with open('pasta_' + self.client_name + '/' + file_name, 'wb') as file:
             ## Laço que recebe os pacotes do arquivo renomeado enviado pelo servidor enquanto houver conteúdo para ler, escrevendo o conteúdo dos pacotes recebidos no novo arquivo criado
             while True:
-                data = self.extract_rec_segment()
+                data, _  = self.extract_rec_segment()
                 
-                if data == b'': # condição que sinaliza o fim do arquivo renomeado enviado pelo servidor
+                if data == 'EOF': # condição que sinaliza o fim do arquivo renomeado enviado pelo servidor
                     break
-                else:
-                    file.write(data) # escreve o conteúdo do pacote recebido no novo arquivo criado
 
             print(f"Arquivo {file_name} retornado com sucesso!")
             print(f"Número de pacotes recebidos e reconhecidos: {self.package_number}")
@@ -171,7 +169,7 @@ class Client:
                         self.client_name = command.split()[1]
                         self.send(command) 
                     else:
-                        print("Tentativa de login inválida.")
+                        print("Comando inválido.")
                 else:
                     if "login" in command:
                         print("Usuário já conectado.")
@@ -183,7 +181,7 @@ class Client:
                     self.send(command)
             else:
                 print("Aguarde a resposta do comando anterior.")
-            # -----------------------
+
 
     def run_receiver(self):
          while True:
@@ -209,8 +207,9 @@ class Client:
 
                     self.online = False
                     self.login_logout_request = False
-            # -----------------------
+                
     
+
     def run(self):
         sender = threading.Thread(target = self.run_sender)
         receiver = threading.Thread(target = self.run_receiver)
@@ -221,31 +220,10 @@ class Client:
         sender.join()
         receiver.join()
 
+
     # Fecha o socket após o envio e recebimento de todos os arquivos
     def close(self):
         self.socket.close()
-
-
-"""
-            match command.split()[0]:
-                case "help":
-                    print(COMMAND_LIST)
-                case "login":
-                    print(f"Usuário \x1B[3m{self.client_name}\x1B[0m conectado!")
-                    print(f"Usuário \x1B[3m{self.client_name}\x1B[0m não conectado!")
-                case "bid":
-                    print(f"Usuário fez o lance no item {id_item} com valor R${val}")
-                    print("Usuário não conseguiu fazer o lance")
-                case "list":
-                    
-                case "status":
-                    
-                case "logout":
-                    print(f"Usuário \x1B[3m{self.client_name}\x1B[0m não conectado!")
-                    print("Desfazendo a conexão...")
-                case _:
-                    print("Comando desconhecido (digite \x1B[3mhelp\x1B[0m para ver lista de comandos)")
-"""    
 
     
 # Criação do cliente e do seu socket

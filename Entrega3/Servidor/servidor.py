@@ -36,6 +36,11 @@ class Item:
         self.destiny = ip_port
         self.timeout = timeout 
 
+class Hoststatus():
+    def __init__(self):
+        self.ack_number = 1
+        self.sequence_number = 0
+        
 class Server:
     def __init__(self, server_name, server_port, buffer_size, header_size):
         self.server_name = server_name
@@ -44,11 +49,10 @@ class Server:
         self.header_size = header_size
         
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do cliente
-        self.sequence_number = 0
-        self.ack_number = 1
         self.data_size = buffer_size - header_size
         self.package_number = 0
 
+        self.hosts = {}
         self.client_list = {}
         self.items_list = {}
 
@@ -83,7 +87,7 @@ class Server:
 
     # Envia um ACK ao cliente confirmando o recebimento do último pacote.      
     def send_ack(self, client):
-        self.socket.sendto(self.ack_number.to_bytes(1), client)
+        self.socket.sendto(self.hosts[client].ack_number.to_bytes(1), client)
 
 
     # Recebe um segmento do cliente e separa o cabeçalho dos dados.
@@ -97,14 +101,17 @@ class Server:
         while True:
             msg, client = self.extract_segment()
 
+            if client not in self.hosts:
+                self.hosts[client] = Hoststatus()
+
             if len(msg) > 1:
                 sequence_number, data = msg[0], msg[1:]
 
-                if sequence_number != self.ack_number:
-                    self.ack_number = (self.ack_number + 1) % 2
+                if sequence_number != self.hosts[client].ack_number:
+                    self.hosts[client].ack_number = (self.hosts[client].ack_number + 1) % 2
                     self.package_number += 1
                 
-                    print(f"Pacote {self.package_number} recebido corretamente")
+                    # print(f"Pacote {self.package_number} recebido corretamente!")
                     self.send_ack(client)
                     
                     return data.decode(), client
@@ -112,11 +119,11 @@ class Server:
                 # Reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
                 # que o ultimo pacote recebido antes dele
                 else:
-                    print("Pacote esperado não foi recebido, enviando ack...")
+                    # print("Pacote esperado não foi recebido, enviando ack...")
                     self.send_ack(client)
             else:
                 ack_number = msg[0]
-                if ack_number == self.sequence_number:
+                if ack_number == self.hosts[client].sequence_number:
                     self.ack_correct = True
 
 
@@ -135,15 +142,14 @@ class Server:
 
     # Cria o segmento a partir do número de sequência (cabeçalho) e os dados
     # Foi implementada uma possível geração de erro no pacote, alternando o bit de sequência
-    def create_segment(self, data, isFile):
-        sequence_number_b = self.sequence_number.to_bytes(1)
+    def create_segment(self, data, isFile, client):
+        sequence_number_b = self.hosts[client].sequence_number.to_bytes(1)
         isfile = isFile.to_bytes(1)
         
         # Condicional para corromper o pacote na taxa média de erro estabelecida
         if (random() < PACKET_ERROR_RATE):
-            false_number = (self.sequence_number + 1) % 2
+            false_number = (self.hosts[client].sequence_number + 1) % 2
             sequence_number_b = false_number.to_bytes(1)
-        print("DATA QUE VAI ENCODE: ", data)
 
         if isinstance(data, str):
             data = data.encode()
@@ -154,7 +160,7 @@ class Server:
     def send_segment(self, data: str, client, isFile):
         # Condicional para perder o pacote na taxa média de erro estabelecida
         if (random() >= PACKET_ERROR_RATE):
-            segment = self.create_segment(data, isFile)
+            segment = self.create_segment(data, isFile, client)
             self.socket.sendto(segment, client)
 
 
@@ -165,7 +171,7 @@ class Server:
 
         while True:
             if self.ack_correct:
-                self.sequence_number = (self.sequence_number+1) % 2
+                self.hosts[client].sequence_number = (self.hosts[client].sequence_number+1) % 2
                 self.package_number += 1
                 self.ack_correct = False
                 break
@@ -180,7 +186,8 @@ class Server:
         self.package_number = 0 # reseta o contador de pacotes enviados
 
         if isFile:
-             with open('pasta/' + data + '.txt', 'rb') as file:
+             item = data.split('/')[1]
+             with open('pasta/' + item + '.txt', 'rb') as file:
                 file_name = data + '.txt'
 
                 self.send_rec_segment(file_name, client_ip_port, .1, isFile)
@@ -205,7 +212,7 @@ class Server:
     def sender(self):
         while True:
             if self.send_buffer:
-                print(self.send_buffer[0])
+                # print(self.send_buffer[0])
                 data, client_ip_port, isFile = self.send_buffer.pop(0)
                 self.send(data, client_ip_port, isFile)
             else:
@@ -218,14 +225,15 @@ class Server:
                  command, client_ip_port = self.receive()
             except socket.timeout:
                 continue
-           
-            print(command)
+            
             
             match command.split()[0]:
                 case "help":
                     self.send_buffer.append((COMMAND_LIST, client_ip_port, False))
-                    #self.send(COMMAND_LIST, client_ip_port, False)
+
+
                 case "login":
+                    print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
                     client_name = command.split()[1]
 
                     if client_name not in self.client_list.values():
@@ -236,19 +244,18 @@ class Server:
                     else:
                         print(f"Usuário \x1B[3m{client_name}\x1B[0m já existente!")
                         
-                        
+    
                 case "bid":
-                    print(f"{self.client_list[client_ip_port]} fez o lance no item {command.split()[1]} com valor R${command.split()[2]}")
+                    print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
                     _, item_id, value = command.split()
-                    if (item_id == '' or value == ''):
+                    '''if (item_id is None or value is None):
                         print("Bid incompleto! (Formato inválido)")
-                        continue
+                        continue'''
+
+                    print(f"{self.client_list[client_ip_port]} fez o lance no item {command.split()[1]} com valor R${command.split()[2]}")
 
                     item_id = int(item_id)
-                    value = int(value)
-
-                    print(self.items_list)
-                    print(self.client_list)
+                    value = float(value)
 
                     if item_id in self.items_list:
                         item = self.items_list[item_id]
@@ -261,52 +268,75 @@ class Server:
                             self.send_buffer.append(("Lance dado com sucesso!", client_ip_port, False))
 
                             for client in self.client_list:
-                                print(client)
                                 if client != client_ip_port:
-                                    bid = 'Lance de' + (float)(item.value) +  'R$ dado para o' + item.name + ', por ' + item.higgest_bidder + '\n'
+                                    bid = 'Lance de R$' + str(value) +  ' dado para o ' + item.name + ' por ' + str(item.highest_bidder) + '\n'
                                     self.send_buffer.append((bid, client, False))
                         else:
-                            self.send_buffer.append(("Lance invalido, arranje mais dinheiro", client_ip_port, False))
+                            self.send_buffer.append(("Lance invalido, arranje mais dinheiro!", client_ip_port, False))
                     else:
-                        self.send_buffer.append(("O item especificado não está em leilão", client_ip_port, False))
+                        self.send_buffer.append(("O item especificado não está em leilão!", client_ip_port, False))
                 
                     
                 case "list":
-                    list = 'Id_item  |  Item_name  |  valor  \n'
+                    list = f"{'Id':<8}{'Item':<15}{'Valor (R$)':>10}\n"
+                    list += "-" * 33 + "\n"
+
                     for item_id in self.items_list:
                         item = self.items_list[item_id]
-                        list += str(item.id) + '  |  ' + item.name + '  |  ' + str(item.top_val) + '\n'
+                        value = f"R${item.top_val:.2f}" if item.top_val else "-"
+                        list += f"{item.id:<8}{item.name:<15}{value:>10}\n"
 
                     self.send_buffer.append((list, client_ip_port, False))
                     
+
                 case "status":
-                    ranking = "Id_item  |  Item_name  |  maior_lance  |  valor_lance  \n"
+                    ranking = f"{'Id':<8}{'Item':<15}{'Maior lance':<15}{'Valor (R$)':>10}\n"
+                    ranking += "-" * 48 + "\n"
+
                     for item_id in self.items_list:
                         item = self.items_list[item_id]
-                        ranking += str(item.id) + '  |  ' + item.name + '  |  ' + str(item.highest_bidder) + '  |  ' + str(item.top_val) + '\n'
-                    
+                        bidder = item.highest_bidder if item.highest_bidder else "-"
+                        value  = f"R${item.top_val:.2f}" if item.top_val else "-"
+                        ranking += f"{item.id:<8}{item.name:<15}{bidder:<15}{value:>10}\n"
+
                     self.send_buffer.append((ranking, client_ip_port, False))
                     
+
                 case "logout":
-                    print("Desfazendo a conexão...")
+                    print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+                    print(f"Desfazendo a conexão de \x1B[3m{self.client_list[client_ip_port]}\x1B[0m...")
                     self.send_buffer.append(("voce esta offline", client_ip_port, False))
                     self.client_list.pop(client_ip_port)
                     
+                    
                 case _:
+                    print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
                     print("Comando desconhecido (digite \x1B[3mhelp\x1B[0m para ver lista de comandos)")
                     
     
     def advertisement(self):
         while True:
-            id_removed = -1
+            remove_item = False
+            remove_ids = []
             for item_id in self.items_list:
                 item = self.items_list[item_id]
                 if ((item.counter == 5 or time() >= item.timeout) and item.destiny is not None): #OU TIMER
-                    self.send_buffer.append((item.name, item.destiny, True))
-                    id_removed = item_id
+                    remove_item = True
+                    remove_ids.append(item_id)
+                    self.send_buffer.append((f'{item.highest_bidder}/{item.name}', item.destiny, True))
+                
+                elif(time() >= item.timeout and item.destiny is None):
+                    item.timeout += 60
 
-            if(id_removed != -1):
-                self.items_list.pop(id_removed)   
+            if(remove_item):
+                for item_id in remove_ids:
+                    item = self.items_list[item_id]
+                    for client in self.client_list:
+                        if(client != item.destiny):
+                            bid = f"Item {item.name}.txt adquirido por {item.highest_bidder} com sucesso!\n"
+                            self.send_buffer.append((bid, client, False))
+                    self.items_list.pop(item_id)
+                remove_item = False   
 
 
     # Executa o loop principal do servidor, processando arquivos indefinidamente

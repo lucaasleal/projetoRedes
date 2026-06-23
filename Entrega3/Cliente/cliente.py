@@ -107,7 +107,7 @@ class Client:
                     self.ack_number = (self.ack_number + 1) % 2
                     self.package_number += 1
 
-                    print(f"Pacote {self.package_number} recebido corretamente")
+                    # print(f"Pacote {self.package_number} recebido corretamente")
                     self.send_ack()
 
                     return data.decode(), isFile
@@ -115,7 +115,7 @@ class Client:
                 # reenvia o ack caso o pacote que chegou tenha o mesmo número de sequência
                 # que o ultimo pacote recebido antes dele
                 else:
-                    print("Pacote esperado não foi recebido, enviando ack...")
+                    # print("Pacote esperado não foi recebido, enviando ack...")
                     
                     self.send_ack()
             else:
@@ -138,7 +138,7 @@ class Client:
         file_name = msg
         
         ## Rotina que recebe os pacotes do arquivo renomeado enviado pelo servidor e escreve o conteúdo em um novo arquivo (com nome novo)
-        with open('pasta_' + self.client_name + '/' + file_name, 'wb') as file:
+        with open('pasta_' + file_name, 'wb') as file:
             ## Laço que recebe os pacotes do arquivo renomeado enviado pelo servidor enquanto houver conteúdo para ler, escrevendo o conteúdo dos pacotes recebidos no novo arquivo criado
             while True:
                 data, _  = self.extract_rec_segment()
@@ -146,16 +146,22 @@ class Client:
                 if data == 'EOF': # condição que sinaliza o fim do arquivo renomeado enviado pelo servidor
                     break
 
-            print(f"Arquivo {file_name} retornado com sucesso!")
-            print(f"Número de pacotes recebidos e reconhecidos: {self.package_number}")
-            print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-        return
+            # print(f"Arquivo {file_name} retornado com sucesso!")
+            # print(f"Número de pacotes recebidos e reconhecidos: {self.package_number}")
+            # print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+        ganhador, item = file_name.split('/')
+        return f"Item {item} adquirido por {ganhador} com sucesso!"
 
     ## Laço principal para enviar e receber os arquivos
     def run_sender(self):
         while True:
+            print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
             # ------ THREAD 1 ------
-            command = input("Insira o comando: ")
+            if not self.online:
+                print("\033[3mlogin username\033[0m para entrar!")
+                command = input("Insira o comando: ")
+            else:
+                command = input("Insira o comando (\033[3mhelp\033[0m para ver comandos): ")
             
             if command == "exit":
                 self.exit = True
@@ -166,13 +172,16 @@ class Client:
                 if not self.online:
                     if command.split()[0] == "login":
                         self.login_logout_request = True
+                        if(command.split()[1]==''):
+                            print("Usuário inválido!")
+                            continue
                         self.client_name = command.split()[1]
                         self.send(command) 
                     else:
-                        print("Comando inválido.")
+                        print("Comando inválido!")
                 else:
                     if "login" in command:
-                        print("Usuário já conectado.")
+                        print("Algum usuário já está conectado!")
                         continue
 
                     if command == "logout":
@@ -191,7 +200,7 @@ class Client:
             except socket.timeout:
                 continue
 
-            print(f"server mandou: {answer}\n")
+            print(f"\n{answer}\n")
             
             if self.exit and not self.login_logout_request:
                 break

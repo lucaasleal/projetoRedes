@@ -136,7 +136,7 @@ class Client:
             return msg
 
         file_name = msg
-        
+                        
         ## Rotina que recebe os pacotes do arquivo renomeado enviado pelo servidor e escreve o conteúdo em um novo arquivo (com nome novo)
         with open('pasta_' + file_name, 'wb') as file:
             ## Laço que recebe os pacotes do arquivo renomeado enviado pelo servidor enquanto houver conteúdo para ler, escrevendo o conteúdo dos pacotes recebidos no novo arquivo criado
@@ -214,6 +214,10 @@ class Client:
                 case "voce esta offline":
                     self.client_name = ""
 
+                    self.online = False
+                    self.login_logout_request = False
+
+                case "usuario existente":
                     self.online = False
                     self.login_logout_request = False
                 

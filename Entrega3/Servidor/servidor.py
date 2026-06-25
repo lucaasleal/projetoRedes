@@ -27,19 +27,18 @@ COMMAND_LIST = """
 items_name = ["caderno", "carro", "celular", "computador", "geladeira"]
 
 class Item:
-    def __init__(self, id, name, highest_bidder, top_val, counter, ip_port, timeout):
+    def __init__(self, id, name, highest_bidder, ip_port):
         self.id = id
         self.name = name
         self.highest_bidder = highest_bidder
         self.top_val = 0
         self.counter = 0
         self.destiny = ip_port
-        self.timeout = timeout 
 
 class Hoststatus():
     def __init__(self):
-        self.ack_number = 1
         self.sequence_number = 0
+        self.ack_number = 1
         
 class Server:
     def __init__(self, server_name, server_port, buffer_size, header_size):
@@ -54,7 +53,11 @@ class Server:
 
         self.hosts = {}
         self.client_list = {}
+
         self.items_list = {}
+        self.items_ids = []
+
+        self.item_idx = 0
 
         self.socket.bind(('', SERVER_PORT)) # vincula o socket à porta definida
         self.create_dir()
@@ -63,15 +66,17 @@ class Server:
         self.send_buffer = []
 
         self.ack_correct = False
+        self.exit = False
 
 
     def create_items_list(self):
-        index = 0
+        id = 0
         for i in items_name:
-            item = Item(index, i, None, None, 0, None, time() + 60)
-            self.items_list[index] = item
-            index += 1
-
+            item = Item(id, i, None, None)
+            self.items_list[id] = item
+            self.items_ids.append(id)
+            id += 1
+        self.item_timeout = time() + 60
 
     # Cria o diretório para armazenar os arquivos
     def create_dir(self, dir_name = "pasta"):
@@ -211,6 +216,9 @@ class Server:
 
     def sender(self):
         while True:
+            if self.exit:
+                return
+            
             if self.send_buffer:
                 # print(self.send_buffer[0])
                 data, client_ip_port, isFile = self.send_buffer.pop(0)
@@ -220,6 +228,9 @@ class Server:
 
     def receiver(self):
         while True:
+            if self.exit:
+                return
+            
             # ------ THREAD 2 -------
             try:
                  command, client_ip_port = self.receive()
@@ -243,6 +254,7 @@ class Server:
                         self.send_buffer.append(('voce esta online', client_ip_port, False))
                     else:
                         print(f"Usuário \x1B[3m{client_name}\x1B[0m já existente!")
+                        self.send_buffer.append(('usuario existente', client_ip_port, False))
                         
     
                 case "bid":
@@ -258,7 +270,8 @@ class Server:
                     value = float(value)
 
                     if item_id in self.items_list:
-                        item = self.items_list[item_id]
+                        id = self.items_ids[self.item_idx]
+                        item = self.items_list[id]
                         value_now = item.top_val
                         if (value > value_now):
                             item.counter += 1
@@ -281,10 +294,9 @@ class Server:
                     list = f"{'Id':<8}{'Item':<15}{'Valor (R$)':>10}\n"
                     list += "-" * 33 + "\n"
 
-                    for item_id in self.items_list:
-                        item = self.items_list[item_id]
-                        value = f"R${item.top_val:.2f}" if item.top_val else "-"
-                        list += f"{item.id:<8}{item.name:<15}{value:>10}\n"
+                    item = self.items_list[self.item_idx]
+                    value = f"R${item.top_val:.2f}" if item.top_val else "-"
+                    list += f"{item.id:<8}{item.name:<15}{value:>10}\n"
 
                     self.send_buffer.append((list, client_ip_port, False))
                     
@@ -292,12 +304,12 @@ class Server:
                 case "status":
                     ranking = f"{'Id':<8}{'Item':<15}{'Maior lance':<15}{'Valor (R$)':>10}\n"
                     ranking += "-" * 48 + "\n"
-
-                    for item_id in self.items_list:
-                        item = self.items_list[item_id]
-                        bidder = item.highest_bidder if item.highest_bidder else "-"
-                        value  = f"R${item.top_val:.2f}" if item.top_val else "-"
-                        ranking += f"{item.id:<8}{item.name:<15}{bidder:<15}{value:>10}\n"
+                    
+                    id = self.items_ids[self.item_idx]
+                    item = self.items_list[id]
+                    bidder = item.highest_bidder if item.highest_bidder else "-"
+                    value  = f"R${item.top_val:.2f}" if item.top_val else "-"
+                    ranking += f"{item.id:<8}{item.name:<15}{bidder:<15}{value:>10}\n"
 
                     self.send_buffer.append((ranking, client_ip_port, False))
                     
@@ -313,31 +325,40 @@ class Server:
                     print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
                     print("Comando desconhecido (digite \x1B[3mhelp\x1B[0m para ver lista de comandos)")
                     
+
     
     def advertisement(self):
         while True:
+
+            if not self.items_list:
+                for client in self.client_list:
+                    if(client != item.destiny):
+                        bid = f"Leilão finalizado!\n"
+                        self.send_buffer.append((bid, client, False))
+                        self.exit = True
+                        return
+
             remove_item = False
-            remove_ids = []
-            for item_id in self.items_list:
-                item = self.items_list[item_id]
-                if ((item.counter == 5 or time() >= item.timeout) and item.destiny is not None): #OU TIMER
-                    remove_item = True
-                    remove_ids.append(item_id)
-                    self.send_buffer.append((f'{item.highest_bidder}/{item.name}', item.destiny, True))
-                
-                elif(time() >= item.timeout and item.destiny is None):
-                    item.timeout += 60
+
+            idx = self.items_ids[self.item_idx]
+            item = self.items_list[idx]
+            if ((item.counter == 5 or time() >= self.item_timeout) and item.destiny is not None): #OU TIMER
+                remove_item = True
+                self.item_timeout = time() + 60
+                self.send_buffer.append((f'{item.highest_bidder}/{item.name}', item.destiny, True))
+            
+            elif(time() >= self.item_timeout and item.destiny is None):
+                self.item_timeout = time() + 60
+                self.item_idx = (self.item_idx + 1) % len(self.items_ids)
 
             if(remove_item):
-                for item_id in remove_ids:
-                    item = self.items_list[item_id]
-                    for client in self.client_list:
-                        if(client != item.destiny):
-                            bid = f"Item {item.name}.txt adquirido por {item.highest_bidder} com sucesso!\n"
-                            self.send_buffer.append((bid, client, False))
-                    self.items_list.pop(item_id)
+                for client in self.client_list:
+                    if(client != item.destiny):
+                        bid = f"Item {item.name}.txt adquirido por {item.highest_bidder} com sucesso!\n"
+                        self.send_buffer.append((bid, client, False))
+                self.items_list.pop(self.items_ids[self.item_idx])
+                self.items_ids.pop(self.item_idx)
                 remove_item = False   
-
 
     # Executa o loop principal do servidor, processando arquivos indefinidamente
     def main(self):

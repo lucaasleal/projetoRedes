@@ -332,11 +332,10 @@ class Server:
 
             if not self.items_list:
                 for client in self.client_list:
-                    if(client != item.destiny):
-                        bid = f"Leilão finalizado!\n"
-                        self.send_buffer.append((bid, client, False))
-                        self.exit = True
-                        return
+                    bid = f"Leilão finalizado!\n"
+                    self.send_buffer.append((bid, client, False))
+                    self.exit = True
+                    return
 
             remove_item = False
 
@@ -348,6 +347,9 @@ class Server:
                 self.send_buffer.append((f'{item.highest_bidder}/{item.name}', item.destiny, True))
             
             elif(time() >= self.item_timeout and item.destiny is None):
+                for client in self.client_list:
+                    bid = f"Item {item.name} não foi adquirido!\n"
+                    self.send_buffer.append((bid, client, False))
                 self.item_timeout = time() + 60
                 self.item_idx = (self.item_idx + 1) % len(self.items_ids)
 

@@ -42,6 +42,11 @@ Entrega3/
 
 ---
 
+## Esquema Visual
+
+<img width="6886" height="5556" alt="DiagramaV2" src="https://github.com/user-attachments/assets/58785ba5-80a9-49e7-b71c-ed1bd1c3310a" />
+
+
 ## Descrição dos Arquivos
 
 ### Cliente

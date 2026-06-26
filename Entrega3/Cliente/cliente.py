@@ -13,6 +13,7 @@ BUFFER_SIZE = 1024 # tamanho do buffer para leitura dos arquivos (1KB)
 HEADER_SIZE = 2 # tamanho do cabeçalho
 PACKET_ERROR_RATE = 0.005 # taxa média de pacotes que serão perdidos ou serão corrompidos
 
+## Representa um cliente (por vez) rodando numa máquina com socket específico
 class Client:
     def __init__(self, server_name, server_port, buffer_size, header_size):
         self.server_name = server_name
@@ -21,9 +22,9 @@ class Client:
         self.header_size = header_size
         
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # cria o socket UDP do cliente
-        self.sequence_number = 0
-        self.ack_number = 1
-        self.data_size = buffer_size - header_size
+        self.sequence_number = 0 # número de sequência inicial (assume que enviou o último corretamente)
+        self.ack_number = 1 # número de ack inicial (assume que recebeu o último corretamente)
+        self.data_size = buffer_size - header_size # tamanho da mensagem
 
         self.client_name = "" # atributo que registra o nome do cliente que está rodando no momento
         self.online = False # flag para indicar se o cliente efetivamente está conectado no momento
@@ -159,58 +160,59 @@ class Client:
             if self.exit:
                 break
 
-            # Caso um cliente não esteja tentando conectar ou desconectar, espera receber um comando
-            # Caso contrário, não permite que novos comandos sejam inseridos
-            if not self.login_logout_request:
-                # Caso o cliente não esteja conectado, espera receber o comando de login
-                # Caso contrário, espera receber um comando diferente de login
-                
-                if not self.online:
-                    print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-                    print("\033[3mlogin username\033[0m para entrar!")
-                    command = input("Insira o comando: ")
+            # Caso um cliente esteja tentando conectar ou desconectar, não permite que novos comandos sejam inseridos 
+            # Caso contrário, espera receber um comando
+            if self.login_logout_request:
+                continue
 
-                    # Caso receba o comando de login, tenta conectar o usuário
-                    # Caso receba o comando de exit, fecha o programa
-                    # Caso contrário, nega o comando
-                    if command.split()[0] == "login":
-                        self.login_logout_request = True
-                        
-                        # Nega o login caso venha sem nome de usuário
-                        if command.split()[1] == '':
-                            print("Usuário inválido!")
-                            continue
-                        
-                        # Salva o nome do cliente que está rodando o programa no momento
-                        self.client_name = command.split()[1]
-                        
-                        self.send(command)
-                    elif command == "exit":
-                        self.exit = True
-                        print("Saindo do sistema...")
-                        break
-                    else:
-                        print("Comando inválido!")
-                else: 
-                    print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-                    command = input("Insira o comando (\033[3mhelp\033[0m para ver comandos): ")
+            # Caso o cliente não esteja conectado, espera receber o comando de login
+            # Caso contrário, espera receber um comando diferente de login                
+            if not self.online:
+                print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+                print("\033[3mlogin username\033[0m para entrar!")
+                command = input("Insira o comando: ")
 
-                    # Fecha o programa
-                    if command == "exit":
-                        self.exit = True
-                        print("Saindo do sistema...")
-                        break
-
-                    # Nega a tentativa de login, pois o usuário já está conectado
-                    if "login" in command:
-                        print("Algum usuário já está conectado!")
+                # Caso receba o comando de login, tenta conectar o usuário
+                # Caso receba o comando de exit, fecha o programa
+                # Caso contrário, nega o comando
+                if command.split()[0] == "login":
+                    # Nega o login caso venha sem nome de usuário
+                    if command.split()[1] == '':
+                        print("Usuário inválido!")
                         continue
-
-                    # Caso receba o comando de logout, começa a desconectar o usuário
-                    if command == "logout":
-                        self.login_logout_request = True
+                    
+                    self.login_logout_request = True
+                    
+                    # Salva o nome do cliente que está rodando o programa no momento
+                    self.client_name = command.split()[1]
                     
                     self.send(command)
+                elif command == "exit":
+                    self.exit = True
+                    print("Saindo do sistema...")
+                    break
+                else:
+                    print("Comando inválido!")
+            else: 
+                print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+                command = input("Insira o comando (\033[3mhelp\033[0m para ver comandos): ")
+
+                # Fecha o programa
+                if command == "exit":
+                    self.exit = True
+                    print("Saindo do sistema...")
+                    break
+
+                # Nega a tentativa de login, pois o usuário já está conectado
+                if "login" in command:
+                    print("Algum usuário já está conectado!")
+                    continue
+
+                # Caso receba o comando de logout, começa a desconectar o usuário
+                if command == "logout":
+                    self.login_logout_request = True
+                
+                self.send(command)
 
     # Função utilizada pela thread receiver
     # que trata do recebimento de pacotes pelo socket único
@@ -225,9 +227,9 @@ class Client:
 
             print(f"\n{answer}\n")
             
-            # Caso o cliente não esteja conectando ou desconectando
-            # e um comando exit tenha sido acionado, fecha esse programa
-            if self.exit and not self.login_logout_request:
+            # Caso um cliente esteja efetivamente offline
+            # e um comando exit tenha sido acionado, fecha o programa
+            if self.exit and not self.online and not self.login_logout_request:
                 break
 
             match answer:
@@ -235,15 +237,12 @@ class Client:
                     self.create_dir(self.client_name)
                     
                     self.online = True
-                    self.login_logout_request = False
                 case "voce esta offline":
                     self.client_name = ""
 
                     self.online = False
-                    self.login_logout_request = False
-                case "usuario existente":
-                    self.online = False
-                    self.login_logout_request = False
+            
+            self.login_logout_request = False
     
     # Main para rodar as threads que vão enviar pacotes (sender) e vão receber pacotes (receiver)
     def run(self):

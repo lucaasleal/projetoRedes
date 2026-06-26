@@ -5,7 +5,7 @@ import socket # importa a biblioteca socket para criar o socket UDP e realizar a
 import os #importa a biblioteca do sistema para criação do diretório para salvamento de arquivos no servidor
 from random import random # importa a função random para geração de perda de pacotes aleatória
 from time import time # importa a função time para temporização de retransmição do pacote (rdt3.0)
-import threading
+import threading # importa a biblioteca threading para criação e gerenciamento de threads
 
 SERVER_NAME = 'localhost'
 SERVER_PORT = 12001 # porta do servidor
@@ -147,9 +147,9 @@ class Server:
 
     # Cria o segmento a partir do número de sequência (cabeçalho) e os dados
     # Foi implementada uma possível geração de erro no pacote, alternando o bit de sequência
-    def create_segment(self, data, isFile, client):
+    def create_segment(self, data, is_file, client):
         sequence_number_b = self.hosts[client].sequence_number.to_bytes(1)
-        isfile = isFile.to_bytes(1)
+        is_file = is_file.to_bytes(1)
         
         # Condicional para corromper o pacote na taxa média de erro estabelecida
         if (random() < PACKET_ERROR_RATE):
@@ -158,21 +158,21 @@ class Server:
 
         if isinstance(data, str):
             data = data.encode()
-        return sequence_number_b + isfile + data
+        return sequence_number_b + is_file + data
 
 
     #Foi implementada um possível não envio do pacote, simulando perda no transporte
-    def send_segment(self, data: str, client, isFile):
+    def send_segment(self, data: str, client, is_file):
         # Condicional para perder o pacote na taxa média de erro estabelecida
         if (random() >= PACKET_ERROR_RATE):
-            segment = self.create_segment(data, isFile, client)
+            segment = self.create_segment(data, is_file, client)
             self.socket.sendto(segment, client)
 
 
     # Envia um segmento e aguarda o ACK correspondente (Stop-and-Wait).
-    def send_rec_segment(self, data: str, client, timeout, isFile):
+    def send_rec_segment(self, data: str, client, timeout, is_file):
         send_time = time() # recebe o tempo atual
-        self.send_segment(data, client, isFile)
+        self.send_segment(data, client, is_file)
 
         while True:
             if self.ack_correct:
@@ -183,28 +183,28 @@ class Server:
             elif time() - send_time >= timeout:
                 print(f"Timeout! Retransmitindo o pacote {self.package_number + 1}")
                 send_time = time()
-                self.send_segment(data, client, isFile)
+                self.send_segment(data, client, is_file)
                 
 
     # Envia um arquivo renomeado de volta ao cliente em múltiplos pacotes.
-    def send(self, data, client_ip_port, isFile):
+    def send(self, data, client_ip_port, is_file):
         self.package_number = 0 # reseta o contador de pacotes enviados
 
-        if isFile:
+        if is_file:
              item = data.split('/')[1]
              with open('pasta/' + item + '.txt', 'rb') as file:
                 file_name = data + '.txt'
 
-                self.send_rec_segment(file_name, client_ip_port, .1, isFile)
+                self.send_rec_segment(file_name, client_ip_port, .1, is_file)
 
                 package = file.read(self.data_size) # lê o conteúdo do arquivo em pacotes do tamanho do buffer
 
                 ## Laço que envia os pacotes do arquivo para o cliente enquanto houver conteúdo para ler
                 while package:
-                    self.send_rec_segment(package, client_ip_port, .1, isFile) # envia o pacote para o cliente
+                    self.send_rec_segment(package, client_ip_port, .1, is_file) # envia o pacote para o cliente
                     package = file.read(self.data_size) # lê o próximo pacote do arquivo até o final do arquivo
 
-                self.send_rec_segment('EOF', client_ip_port, .1, isFile) # envia o caractere null para sinalizar o cliente do fim do arquivo
+                self.send_rec_segment('EOF', client_ip_port, .1, is_file) # envia o caractere null para sinalizar o cliente do fim do arquivo
 
                 print(f"Arquivo {file_name} retornado com sucesso!")
                 print(f"Número de pacotes enviados: {self.package_number}")
@@ -212,7 +212,7 @@ class Server:
         else:
             for i in range(0, len(data), self.data_size):
                 package = data[i:i+self.data_size]
-                self.send_rec_segment(package, client_ip_port, .1, isFile) # envia o pacote para o cliente
+                self.send_rec_segment(package, client_ip_port, .1, is_file) # envia o pacote para o cliente
 
     def sender(self):
         while True:
@@ -221,8 +221,8 @@ class Server:
             
             if self.send_buffer:
                 # print(self.send_buffer[0])
-                data, client_ip_port, isFile = self.send_buffer.pop(0)
-                self.send(data, client_ip_port, isFile)
+                data, client_ip_port, is_file = self.send_buffer.pop(0)
+                self.send(data, client_ip_port, is_file)
             else:
                 continue
 

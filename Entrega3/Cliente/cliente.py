@@ -156,14 +156,17 @@ class Client:
     # e limita o envio do comando a depender de um cliente estar conectado ou desconectado
     def run_sender(self):
         while True:
-            print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-            
+            if self.exit:
+                break
+
             # Caso um cliente não esteja tentando conectar ou desconectar, espera receber um comando
             # Caso contrário, não permite que novos comandos sejam inseridos
             if not self.login_logout_request:
                 # Caso o cliente não esteja conectado, espera receber o comando de login
                 # Caso contrário, espera receber um comando diferente de login
+                
                 if not self.online:
+                    print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
                     print("\033[3mlogin username\033[0m para entrar!")
                     command = input("Insira o comando: ")
 
@@ -188,7 +191,8 @@ class Client:
                         break
                     else:
                         print("Comando inválido!")
-                else:
+                else: 
+                    print("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
                     command = input("Insira o comando (\033[3mhelp\033[0m para ver comandos): ")
 
                     # Fecha o programa
@@ -207,8 +211,6 @@ class Client:
                         self.login_logout_request = True
                     
                     self.send(command)
-            else:
-                print("Aguarde a resposta do comando anterior.")
 
     # Função utilizada pela thread receiver
     # que trata do recebimento de pacotes pelo socket único
